@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 260px; margin: 0; padding: 14px;
+      background: #14161a; color: #e8e6e3;
+      font: 14px/1.4 -apple-system, "Segoe UI", sans-serif;
+    }
+    h1 { font-size: 16px; margin: 0; }
+    #bank { margin: 2px 0 12px; color: #9aa0a6; }
+    button { border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #block { width: 100%; padding: 8px; background: #4b8bbe; color: #fff; font-weight: 600; }
+    h2 { font-size: 12px; margin: 16px 0 4px; color: #9aa0a6; font-weight: 600; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    li button { padding: 2px 8px; background: #2a2e35; color: #ff8f8f; }
+  </style>
+</head>
+<body>
+  <h1>Python Gate</h1>
+  <p id="bank"></p>
+  <button id="block"></button>
+  <h2>Blocked sites</h2>
+  <ul id="sites"></ul>
+  <script src="sites.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
