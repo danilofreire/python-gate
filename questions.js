@@ -65,6 +65,20 @@ const NP = "import numpy as np\n";
 // test script runs after the filled-in code; it must not raise an error.
 const fv = (code, accept, why, verify) => ({ code, answer: accept[0], accept, blank: true, verify, why });
 
+// "Which line has the bug?" question. The lines are shown numbered. Replacing
+// line `badLine` with `fixedLine` must make the code print `expect`.
+const bug = (lines, badLine, fixedLine, expect, why) => ({
+  code: lines.map((line, i) => `${i + 1}  ${line}`).join("\n") + `\n\n# should print ${printed(expect)}`,
+  prompt: "One line has a bug. Which line number?",
+  answer: String(badLine), accept: [String(badLine)], bug: true,
+  raw: lines.join("\n"),
+  fixed: lines.map((line, i) => (i === badLine - 1 ? fixedLine : line)).join("\n"),
+  expect: printed(expect), why,
+});
+
+// In the bank, generators after this marker are the harder ones for their topic.
+const HARDER = Symbol("harder");
+
 const PLT = "import matplotlib.pyplot as plt\n";
 const XY = PLT + "x = [1, 2, 3, 4]\ny = [2, 4, 5, 8]\n";
 
@@ -103,8 +117,10 @@ function groups(city, sales) {
 const frameCode = (city, sales) =>
   `import pandas as pd\ndf = pd.DataFrame({\n    "city": ${src(city)},\n    "sales": ${src(sales)},\n})\n`;
 
-const GENERATORS = [
-  // ---- numbers ----
+// The question bank. A string names the topic of the generators that follow
+// it, and HARDER marks the ones that only appear once a topic is going well.
+const BANK = [
+  "Numbers and types",
   () => {
     const a = rand(7, 29), b = rand(2, 5);
     return q(`print(${a} // ${b})`, Math.floor(a / b), "// divides and drops the decimal part.");
@@ -136,7 +152,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- strings ----
+  "Strings",
   () => {
     const w = pick(WORDS);
     return q(`print(len("${w}"))`, w.length, "len() counts the characters.");
@@ -187,7 +203,7 @@ const GENERATORS = [
       "Each new character goes in front of s, so the word comes out reversed.");
   },
 
-  // ---- lists ----
+  "Lists",
   () => {
     const xs = nums(5), i = rand(0, 4);
     const shown = rand(0, 1) ? i : i - 5;
@@ -240,7 +256,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- loops and conditions ----
+  "Loops and conditions",
   () => {
     const n = rand(3, 6);
     let total = 0;
@@ -286,7 +302,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- dictionaries and functions ----
+  "Dictionaries",
   () => {
     const ages = NAMES.slice(0, 3).map((n) => [n, rand(18, 60)]);
     const d = "{" + ages.map(([n, a]) => `"${n}": ${a}`).join(", ") + "}";
@@ -297,6 +313,7 @@ const GENERATORS = [
       q(`ages = ${d}\nages["Eva"] = 30\nprint(len(ages))`, 4, "Assigning to a new key adds a pair, and len() counts the pairs."),
     ]);
   },
+  "Functions: reading",
   () => {
     const x = rand(2, 9), y = rand(2, 5);
     const def = "def double_plus(x, y=1):\n    return x * 2 + y\n\n";
@@ -306,7 +323,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- pandas ----
+  "pandas",
   () => {
     const { setup } = frame();
     return pick([
@@ -407,7 +424,7 @@ const GENERATORS = [
       q(setup + `print(df["city"].str.len().tolist())`, city.map((c) => c.length), ".str.len() gives the number of characters in each value."),
     ]);
   },
-  // ---- numpy ----
+  "NumPy",
   () => {
     const { setup } = matrix();
     return pick([
@@ -494,7 +511,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- functions: reading ----
+  "Functions: reading",
   () => {
     const x = rand(2, 9);
     return q(`def double(x):\n    x * 2\n\nprint(double(${x}))`, "None", "There is no return, so the function gives back None.");
@@ -553,7 +570,7 @@ const GENERATORS = [
       add(xs.map((x) => x * x)), "The function is called once per item, and each result is added to total.");
   },
 
-  // ---- functions: writing (fill in the blank) ----
+  "Functions: writing",
   () => {
     const w = rand(2, 9), h = rand(2, 9);
     return fb("def area(width, height):\n    ____ width * height", `area(${w}, ${h})`, w * h, ["return"],
@@ -605,7 +622,7 @@ const GENERATORS = [
       ["total", "price * quantity", "quantity * price"], "The function has to return the value it computed.");
   },
 
-  // ---- list methods ----
+  "Lists",
   () => {
     const xs = nums(4), setup = `xs = ${src(xs)}\n`;
     return pick([
@@ -658,7 +675,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- string formatting ----
+  "Strings",
   () => {
     const x = decimal(3);
     return pick([
@@ -699,7 +716,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- pandas merge ----
+  "pandas merge",
   () => {
     const { setup, matched, unused } = tables();
     const merge = (how) => setup + `merged = students.merge(courses, on="course_id"${how})\nprint(len(merged))`;
@@ -744,7 +761,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- plotting ----
+  "Matplotlib",
   () => {
     const r = rand(2, 3), c = rand(2, 4), n = rand(3, 6), values = nums(8);
     return pick([
@@ -787,7 +804,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- dictionaries ----
+  "Dictionaries",
   () => {
     const { pairs, code } = agesDict(), [name, age] = pick(pairs);
     return pick([
@@ -848,7 +865,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- loops ----
+  "Loops and conditions",
   () => {
     const i = rand(0, 3), loop = (start) =>
       `for i, name in enumerate(${src(NAMES)}${start}):\n    if name == "${NAMES[i]}":\n        print(i)`;
@@ -915,7 +932,7 @@ const GENERATORS = [
     ]);
   },
 
-  // ---- pandas groupby ----
+  "pandas groupby",
   () => {
     const { city, sales, setup } = frame(), g = groups(city, sales), c = pick(g.cities);
     const whole = g.cities.filter((x) => Number.isInteger((g.sum[x] / g.size[x]) * 2));
@@ -963,11 +980,354 @@ const GENERATORS = [
         ".transform() returns one value per original row: each row gets the number of rows in its city."),
     ]);
   },
+
+  // ======== harder questions ========
+
+  "Numbers and types", HARDER,
+  () => {
+    const a = rand(7, 19), b = rand(2, 5), c = rand(2, 4), d = rand(2, 3);
+    return pick([
+      q(`print(-${a} // ${b})`, Math.floor(-a / b), "// rounds down, and for a negative number down means further from zero."),
+      q(`print((${a} + ${b}) // ${c} * ${d})`, Math.floor((a + b) / c) * d, "The brackets run first. Then // and * run from left to right."),
+      q(`print(${a} % ${b} ** 2)`, a % (b * b), "** runs before %, so this is the remainder after dividing by the square."),
+      q(`print(${a} // ${b} + ${a} % ${b})`, Math.floor(a / b) + (a % b), "// gives the whole part of the division and % gives the remainder."),
+    ]);
+  },
+  () => {
+    const a = rand(1, 9), b = rand(1, 9), c = rand(1, 9);
+    return pick([
+      q(`print(int("${a}" + "${b}") + ${c})`, a * 10 + b + c, "The strings are joined first, then int() turns the result into a number."),
+      q(`print(str(${a}) * 2 + str(${b}))`, `${a}${a}${b}`, "str() makes text, so * repeats it and + joins it."),
+      q(`print(0.1 + 0.2 == 0.3)`, false, "Floats are stored approximately, so 0.1 + 0.2 is slightly more than 0.3."),
+      q(`print(bool(0), bool("0"))`, "False True", "0 counts as False, but any non-empty string counts as True, even \"0\"."),
+      q(`print(${a} / ${a} == 1, type(${a} / ${a}) == int)`, "True False", "/ returns the float 1.0. It equals 1, but its type is float."),
+    ]);
+  },
+
+  "Strings", HARDER,
+  () => {
+    const w = pick(WORDS), setup = `word = "${w}"\n`;
+    return pick([
+      q(setup + `print(word[::-1][:3])`, [...w].reverse().join("").slice(0, 3), "[::-1] reverses the string, then [:3] takes the first three characters of the result."),
+      q(setup + `print(word[1:-1].upper())`, w.slice(1, -1).toUpperCase(), "[1:-1] drops the first and last characters, then .upper() capitalises the rest."),
+      q(setup + `print("-".join(word[:3]))`, [...w.slice(0, 3)].join("-"), "A string is a sequence of characters, so .join puts the separator between them."),
+      q(setup + `print(word.replace(word[0], "X"))`, w.replaceAll(w[0], "X"), ".replace swaps every copy of the first letter, wherever it appears."),
+    ]);
+  },
+  () => {
+    const ws = pick([["the", "quick", "brown", "fox"], ["data", "is", "never", "clean"], ["we", "love", "tidy", "tables"]]);
+    const setup = `words = "${ws.join(" ")}".split()\n`;
+    const shortest = ws.reduce((best, w) => (w.length < best.length ? w : best));
+    const longest = ws.reduce((best, w) => (w.length > best.length ? w : best));
+    return pick([
+      q(setup + `print(words[1][0] + words[-1][-1])`, ws[1][0] + ws[3].slice(-1), "The first index picks a word and the second picks a character inside it."),
+      q(setup + `print(sorted(words, key=len)[0])`, shortest, "key=len sorts by length. Words of the same length keep their original order."),
+      q(setup + `print(max(words, key=len))`, longest, "max with key=len returns the longest word, and the first one if there is a tie."),
+      q(setup + `print(" ".join(w.capitalize() for w in words))`, ws.map((w) => w[0].toUpperCase() + w.slice(1)).join(" "), "Each word is capitalised, then .join puts them back together with spaces."),
+    ]);
+  },
+  () => {
+    const name = pick(NAMES).toLowerCase();
+    return bug([`name = "${name}"`, `greeting = "Hello, " + name.upper`, `print(greeting)`], 2,
+      `greeting = "Hello, " + name.upper()`, `Hello, ${name.toUpperCase()}`, "Without the brackets, name.upper is the method itself and not its result.");
+  },
+
+  "Lists", HARDER,
+  () => {
+    const xs = distinct(4), setup = `xs = ${src(xs)}\n`;
+    return pick([
+      q(setup + `ys = xs[1:]\nys[0] = 99\nprint(xs[1])`, xs[1], "A slice is a copy, so changing ys does not change xs."),
+      q(setup + `ys = xs\nys[0] = 99\nprint(xs[0])`, 99, "ys = xs is the same list under a second name."),
+      q(setup + `print(sorted(xs)[-2])`, [...xs].sort((a, b) => a - b)[2], "sorted() orders the values, and [-2] is the second largest."),
+      q(setup + `print(sum(xs[::2]))`, xs[0] + xs[2], "[::2] takes the items at indexes 0 and 2."),
+      q(setup + `print([x for x in xs if x % 2 == 0][::-1])`, xs.filter((x) => x % 2 === 0).reverse(), "The comprehension keeps the even numbers, then [::-1] reverses them."),
+    ]);
+  },
+  () => {
+    const m = [nums(2, 1, 9), nums(2, 1, 9), nums(2, 1, 9)], setup = `m = ${src(m)}\n`;
+    return pick([
+      q(setup + `print(m[1][0] + m[2][1])`, m[1][0] + m[2][1], "m[row][column]: the first index picks the inner list and the second picks the item."),
+      q(setup + `print(len(m), len(m[0]))`, "3 2", "len(m) counts the inner lists, and len(m[0]) counts the items in the first one."),
+      q(setup + `print([row[0] for row in m])`, m.map((row) => row[0]), "Taking item 0 of every row gives the first column."),
+      q(setup + `print(sum(x for row in m for x in row))`, add(m.map(add)), "The two for clauses visit every item of every row."),
+    ]);
+  },
+  () => {
+    const xs = nums(3);
+    return bug([`xs = ${src(xs)}`, `total = 0`, `for i in range(1, len(xs)):`, `    total += xs[i]`, `print(total)`], 3,
+      `for i in range(len(xs)):`, add(xs), "range(1, len(xs)) starts at index 1, so the first item is skipped.");
+  },
+
+  "Dictionaries", HARDER,
+  () => {
+    const a = nums(3, 50, 99);
+    let b = nums(3, 50, 99);
+    while (add(a) === add(b)) b = nums(3, 50, 99);
+    const setup = `scores = {"Ana": ${src(a)}, "Ben": ${src(b)}}\n`;
+    return pick([
+      q(setup + `print(max(scores["Ana"]) - min(scores["Ben"]))`, Math.max(...a) - Math.min(...b), "Each key returns a list, so max and min work on the scores of one person."),
+      q(setup + `print(sum(len(v) for v in scores.values()))`, 6, "Each value is a list of 3 scores, and there are 2 lists."),
+      q(setup + `print(max(scores, key=lambda k: sum(scores[k])))`, add(a) > add(b) ? "Ana" : "Ben", "max goes through the keys and compares them by the total of their scores."),
+      q(setup + `scores["Ana"].append(100)\nprint(len(scores["Ana"]))`, 4, "The key returns the list itself, so append changes the list stored in the dictionary."),
+    ]);
+  },
+  () => {
+    const { pairs, code } = agesDict(), byAge = [...pairs].sort((x, y) => x[1] - y[1]);
+    const [name, age] = pick(pairs), t = byAge[1][1];
+    return pick([
+      q(code + `inverse = {age: name for name, age in ages.items()}\nprint(inverse[${age}])`, name, "The comprehension swaps keys and values, so an age now looks up a name."),
+      q(code + `print(sorted(ages, key=ages.get)[0])`, byAge[0][0], "sorted goes through the keys and orders them by age, so [0] is the youngest."),
+      q(code + `print(sorted(ages.values())[1])`, t, "The ages are sorted from smallest to largest, and [1] is the middle one of three."),
+      q(code + `print([name for name, age in ages.items() if age >= ${t}])`, pairs.filter((p) => p[1] >= t).map((p) => p[0]), ".items() gives name and age together, and the if keeps the names that pass the test."),
+    ]);
+  },
+
+  "Loops and conditions", HARDER,
+  () => {
+    const n = rand(8, 16), k = rand(4, 8), start = pick([3, 5, 6, 7, 10, 12]);
+    let fizz = 0, a = 0, b = 1, m = start, steps = 0;
+    for (let i = 1; i < n; i++) if (i % 3 === 0 || i % 5 === 0) fizz += i;
+    for (let i = 0; i < k; i++) [a, b] = [b, a + b];
+    while (m !== 1) { m = m % 2 === 0 ? m / 2 : 3 * m + 1; steps++; }
+    return pick([
+      q(`total = 0\nfor i in range(1, ${n}):\n    if i % 3 == 0 or i % 5 == 0:\n        total += i\nprint(total)`, fizz, "Only the multiples of 3 or 5 below the limit are added."),
+      q(`a, b = 0, 1\nfor _ in range(${k}):\n    a, b = b, a + b\nprint(a)`, a, "Each pass moves b into a and puts their sum into b: 0, 1, 1, 2, 3, 5, 8 and so on."),
+      q(`n = ${start}\nsteps = 0\nwhile n != 1:\n    if n % 2 == 0:\n        n = n // 2\n    else:\n        n = 3 * n + 1\n    steps += 1\nprint(steps)`, steps, "Even numbers are halved and odd numbers become 3n + 1, until n reaches 1."),
+    ]);
+  },
+  () => {
+    const xs = nums(4, 1, 9), k = rand(8, 12);
+    let pairs = 0;
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) if (xs[i] + xs[j] > k) pairs++;
+    return pick([
+      q(`xs = ${src(xs)}\ncount = 0\nfor i in range(len(xs)):\n    for j in range(i + 1, len(xs)):\n        if xs[i] + xs[j] > ${k}:\n            count += 1\nprint(count)`, pairs,
+        "The inner loop starts at i + 1, so each pair of items is checked once."),
+      q(`out = []\nfor i, x in enumerate(${src(xs)}):\n    if i % 2 == 0:\n        out.append(x)\nprint(out)`, [xs[0], xs[2]], "enumerate gives the position, and only the items at even positions are kept."),
+    ]);
+  },
+  () => {
+    const xs = nums(3);
+    return bug([`xs = ${src(xs)}`, `total = 0`, `for x in xs:`, `    total = x`, `print(total)`], 4,
+      `    total += x`, add(xs), "= replaces total on every pass. += adds to it.");
+  },
+
+  "Functions: reading", HARDER,
+  () => {
+    const n = rand(3, 5), x = rand(2, 5), xs = nums(3, 1, 9);
+    return pick([
+      q(`def fact(n):\n    if n <= 1:\n        return 1\n    return n * fact(n - 1)\n\nprint(fact(${n}))`, [1, 1, 2, 6, 24, 120][n],
+        "The function calls itself with a smaller n until n reaches 1, then multiplies on the way back."),
+      q(`def add(x, items=[]):\n    items.append(x)\n    return len(items)\n\nadd(1)\nprint(add(2))`, 2, "The default list is created once and shared between calls, so it already holds 1."),
+      q(`def total(*args):\n    return sum(args)\n\nprint(total(${xs.join(", ")}))`, add(xs), "*args collects all the positional arguments into a tuple."),
+      q(`def apply_twice(f, x):\n    return f(f(x))\n\nprint(apply_twice(lambda v: v * 2, ${x}))`, x * 4, "The function is passed in as an argument and applied twice."),
+    ]);
+  },
+  () => {
+    const xs = nums(4, 1, 9), k = rand(4, 12), a = rand(2, 9), b = rand(2, 9);
+    return pick([
+      q(`def double(x):\n    return x * 2\n\nprint([double(x) for x in ${src(xs)} if double(x) > ${k}])`, xs.map((x) => x * 2).filter((x) => x > k), "Each item is doubled, and only the doubled values above the limit are kept."),
+      q(`print(list(map(lambda x: x + 1, ${src(xs)})))`, xs.map((x) => x + 1), "map applies the function to every item."),
+      q(`def outer(x):\n    def inner(y):\n        return x + y\n    return inner\n\nadd_n = outer(${a})\nprint(add_n(${b}))`, a + b, "outer returns the inner function, which remembers the value of x."),
+    ]);
+  },
+  () => {
+    const end = pick([0, -1]);
+    return q(`words = ["pear", "fig", "banana", "kiwi"]\nprint(sorted(words, key=lambda w: len(w))[${end}])`, end === 0 ? "fig" : "banana",
+      "The lambda returns the length of each word, so the list is sorted from shortest to longest.");
+  },
+
+  "Functions: writing", HARDER,
+  () => {
+    const xs = nums(4), limit = rand(6, 14), w = pick(WORDS);
+    return pick([
+      fb("def is_long(word):\n    return ____ > 5", `is_long("${w}")`, w.length > 5, ["len(word)"], "len(word) is the number of characters, which is then compared with 5."),
+      fb("def last(xs):\n    return xs[____]", `last(${src(xs)})`, xs[3], ["-1", "len(xs) - 1"], "Index -1 is the last item."),
+      fb("def count_big(xs, limit):\n    count = 0\n    for x in xs:\n        if x > limit:\n            count ____ 1\n    return count", `count_big(${src(xs)}, ${limit})`, xs.filter((x) => x > limit).length, ["+="], "+= 1 adds one to the counter."),
+      fb("def evens(xs):\n    return [x for x in xs ____ x % 2 == 0]", `evens(${src(xs)})`, xs.filter((x) => x % 2 === 0), ["if"], "The if at the end of a comprehension filters the items."),
+    ]);
+  },
+  () => {
+    const xs = nums(4);
+    return bug([`def average(xs):`, `    total = sum(xs)`, `    return total / len(x)`, ``, `print(average(${src(xs)}))`], 3,
+      `    return total / len(xs)`, pyFloat(add(xs) / 4), "The parameter is called xs. There is no variable named x.");
+  },
+  () => {
+    const name = pick(NAMES);
+    return bug([`def greet(name):`, `    message = "Hi, " + name`, ``, `print(greet("${name}"))`], 2,
+      `    return "Hi, " + name`, `Hi, ${name}`, "The function builds the message but never returns it, so the call gives None.");
+  },
+
+  "NumPy", HARDER,
+  () => {
+    const a = distinct(5, 1, 20), setup = NP + `a = np.array(${src(a)})\n`, mean = add(a) / 5;
+    return pick([
+      q(setup + `print(a[a > a.mean()].tolist())`, a.filter((x) => x > mean), "a.mean() is computed first, then the mask keeps the values above it."),
+      q(setup + `print(a[a % 2 == 0].sum())`, add(a.filter((x) => x % 2 === 0)), "The mask keeps the even values and .sum() adds them. An empty selection sums to 0."),
+      q(setup + `print(np.argsort(a).tolist())`, [0, 1, 2, 3, 4].sort((i, j) => a[i] - a[j]), "argsort returns the positions that would sort the array, smallest value first."),
+      q(setup + `a[1:3] = 0\nprint(a.sum())`, a[0] + a[3] + a[4], "Assigning to a slice changes those positions in the array itself."),
+    ]);
+  },
+  () => {
+    const { m, setup } = matrix(), k = rand(3, 7);
+    return pick([
+      q(setup + `print((m + np.array([10, 20, 30])).tolist())`, m.map((row) => row.map((x, i) => x + 10 * (i + 1))), "The 1D array is added to every row. This is called broadcasting."),
+      q(setup + `print(m[m > ${k}].size)`, m.flat().filter((x) => x > k).length, "A mask on a 2D array returns the matching values as a 1D array."),
+      q(setup + `print(m.max(axis=1).tolist())`, m.map((row) => Math.max(...row)), "axis=1 works across the columns, giving the largest value in each row."),
+      q(setup + `print(m.T.shape)`, "(3, 2)", ".T swaps rows and columns."),
+      q(setup + `print(m.reshape(3, 2)[2].tolist())`, [m[1][1], m[1][2]], "reshape reads the six values row by row and regroups them in pairs."),
+    ]);
+  },
+
+  "pandas", HARDER,
+  () => {
+    const { city, sales, setup } = frame(), k = pick(sales), c = pick(city), mean = add(sales) / 4;
+    const order = [0, 1, 2, 3].sort((i, j) => sales[j] - sales[i]);
+    return pick([
+      q(setup + `print(df.loc[df["sales"].idxmax(), "city"])`, city[order[0]], ".idxmax() gives the row label of the largest sale, and .loc reads the city in that row."),
+      q(setup + `print(df.sort_values("sales", ascending=False).head(2)["city"].tolist())`, [city[order[0]], city[order[1]]], "The rows are sorted from largest to smallest sales, and .head(2) keeps the top two."),
+      q(setup + `print((df["sales"] > df["sales"].mean()).sum())`, sales.filter((x) => x > mean).length, "Each sale is compared with the mean, and True counts as 1 in the sum."),
+      q(setup + `print(df[(df["sales"] >= ${k}) & (df["city"] == "${c}")].shape[0])`, sales.filter((x, i) => x >= k && city[i] === c).length, "& keeps the rows where both conditions are True. Each condition needs its own brackets."),
+      q(setup + `print(df[df["sales"] > ${k}]["city"].nunique())`, new Set(city.filter((_, i) => sales[i] > k)).size, "The rows are filtered first, then .nunique() counts the distinct cities that remain."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), k = pick(sales);
+    return pick([
+      q(setup + `print(df["city"].isin(["Rio", "Lima"]).sum())`, city.filter((c) => c !== "Quito").length, ".isin() is True for rows whose city is in the list."),
+      q(setup + `print(df["sales"].apply(lambda x: x * 2).max())`, Math.max(...sales) * 2, ".apply() runs the function on every value of the column."),
+      q(setup + `df["rank"] = df["sales"].rank(ascending=False).astype(int)\nprint(df["rank"].tolist())`, sales.map((x) => sales.filter((y) => y > x).length + 1), "With ascending=False, the largest sale gets rank 1."),
+      q(setup + `print(df.query("sales > ${k}")["sales"].tolist())`, sales.filter((x) => x > k), ".query() filters rows with a condition written as text."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), k = pick(sales);
+    return bug([...setup.trim().split("\n"), `big = df[df["sales"] >= ${k} and df["city"] == "Rio"]`, `print(len(big))`], 6,
+      `big = df[(df["sales"] >= ${k}) & (df["city"] == "Rio")]`, sales.filter((x, i) => x >= k && city[i] === "Rio").length,
+      "pandas needs & instead of and, with each condition in its own brackets.");
+  },
+
+  "pandas groupby", HARDER,
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales), c = pick(g.cities);
+    const repeated = sales.filter((_, i) => g.size[city[i]] > 1);
+    return pick([
+      q(setup + `print(df.groupby("city")["sales"].agg(lambda s: s.max() - s.min())["${c}"])`, Math.max(...g.rows[c]) - Math.min(...g.rows[c]), "The lambda runs once per city and returns the gap between its largest and smallest sale."),
+      q(setup + `print(df[df.groupby("city")["sales"].transform("size") > 1].shape[0])`, repeated.length, "transform gives each row the size of its city, and the mask keeps rows from cities that appear more than once."),
+      q(setup + `print(df.groupby("city").filter(lambda g: len(g) > 1)["sales"].sum())`, add(repeated), ".filter keeps whole groups that pass the test, here the cities with more than one row."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales), k = rand(8, 16);
+    return pick([
+      q(setup + `totals = df.groupby("city")["sales"].sum()\nprint(totals[totals > ${k}].index.tolist())`, g.cities.filter((c) => g.sum[c] > k), "The grouped totals are a Series, so they can be filtered like any column."),
+      q(setup + `print(df.groupby("city")["sales"].max().min())`, Math.min(...g.cities.map((c) => Math.max(...g.rows[c]))), "First the largest sale of each city, then the smallest of those."),
+      q(setup + `print(df.groupby("city")["sales"].count().sort_index(ascending=False).index[0])`, g.cities[g.cities.length - 1], "The index holds the city names, and sorting it in reverse puts the last one alphabetically first."),
+    ]);
+  },
+
+  "pandas merge", HARDER,
+  () => {
+    const { names, ids, courseIds, setup, matched } = tables();
+    const outer = setup + `merged = students.merge(courses, on="course_id", how="outer", indicator=True)\n`;
+    return pick([
+      q(setup + `merged = students.merge(courses, on="course_id")\nprint(merged.groupby("title")["name"].count()["Stats"])`, ids.filter((x) => x === 1).length, "After the merge each student row carries a title, so groupby can count students per course."),
+      q(outer + `print((merged["_merge"] == "both").sum())`, matched, "indicator=True adds a _merge column that says whether each row was found in both tables or only one."),
+      q(outer + `print((merged["_merge"] == "left_only").sum())`, 4 - matched, "left_only marks the students whose course_id is not in courses."),
+      q(setup + `missing = students[~students["course_id"].isin(courses["course_id"])]\nprint(missing["name"].tolist())`, names.filter((_, i) => !courseIds.includes(ids[i])), "~ flips the mask, so this keeps the students whose course_id is not in courses."),
+    ]);
+  },
+  () => bug([
+    `import pandas as pd`,
+    `students = pd.DataFrame({"name": ["Ana", "Ben"], "course_id": [1, 2]})`,
+    `courses = pd.DataFrame({"id": [1, 2], "title": ["Stats", "Python"]})`,
+    `merged = students.merge(courses, on="course_id")`,
+    `print(merged["title"].tolist())`,
+  ], 4, `merged = students.merge(courses, left_on="course_id", right_on="id")`, ["Stats", "Python"],
+  "on= needs a column that exists in both tables. Here the key has a different name in each, so it needs left_on and right_on."),
+
+  "Matplotlib", HARDER,
+  () => pick([
+    q(XY + `fig, axes = plt.subplots(2, 2)\naxes[0, 1].plot(x, y)\nprint(len(axes[0, 1].lines) + len(axes[1, 0].lines))`, 1, "Only the axes in row 0, column 1 received a line."),
+    q(PLT + `fig, axes = plt.subplots(2, 3)\nprint(len(fig.axes))`, 6, "A 2 by 3 grid holds 6 axes."),
+    q(XY + `fig, ax = plt.subplots()\nax.plot(x, y)\nax.set_xlim(0, 10)\nprint(ax.get_xlim()[1])`, "10.0", "set_xlim fixes the range of the horizontal axis, and the limits are stored as floats."),
+    q(XY + `fig, ax = plt.subplots()\nax.plot(x, y, label="a")\nax.plot(x, x)\nprint(len(ax.get_legend_handles_labels()[1]))`, 1, "Only the lines that were given a label appear in the legend."),
+  ]),
+  () => pick([
+    fv(XY + `fig, axes = plt.subplots(1, 2)\naxes[____].plot(x, y)  # draw on the second plot`, ["1", "-1"], "With one row, axes is a 1D array, and the second plot is at index 1.", "assert len(axes[1].lines) == 1"),
+    fv(XY + `plt.plot(x, y, ____="--")  # dashed line`, ["linestyle", "ls"], "linestyle sets how the line is drawn, and \"--\" means dashed.", 'assert plt.gca().lines[0].get_linestyle() == "--"'),
+    fv(XY + `fig, ax = plt.subplots()\nax.plot(x, y)\nax.____(0, 10)  # horizontal axis from 0 to 10`, ["set_xlim"], "set_xlim sets the range of the horizontal axis.", "assert ax.get_xlim() == (0.0, 10.0)"),
+    fv(XY + `plt.scatter(x, y, ____=0.5)  # half-transparent points`, ["alpha"], "alpha sets the transparency, from 0 (invisible) to 1 (solid).", "assert plt.gca().collections[0].get_alpha() == 0.5"),
+  ]),
 ];
 
-function makeQuestion() {
-  return pick(GENERATORS)();
+// Topics in the order the toolbar popup lists them.
+const TOPICS = [
+  "Numbers and types", "Strings", "Lists", "Dictionaries", "Loops and conditions",
+  "Functions: reading", "Functions: writing", "NumPy", "pandas", "pandas groupby",
+  "pandas merge", "Matplotlib",
+];
+
+// Each generator gets an id made from its own source code. Progress is stored
+// under that id, so it survives when generators are added or reordered.
+const hash = (text) => {
+  let h = 5381;
+  for (const ch of text) h = (h * 33 + ch.charCodeAt(0)) >>> 0;
+  return h.toString(36);
+};
+const GENERATORS = []; // { id, topic, level (1 normal, 2 harder), make }
+let currentTopic, currentLevel;
+for (const item of BANK) {
+  if (item === HARDER) currentLevel = 2;
+  else if (typeof item === "string") [currentTopic, currentLevel] = [item, 1];
+  else GENERATORS.push({ id: hash(item.toString()), topic: currentTopic, level: currentLevel, make: item });
 }
+
+// Picks a question type at random.
+// - `only` lists the topics to draw from; an empty list means all of them
+// - `weights` makes some types more likely than others (see nextWeight)
+// - `harder` lists the topics whose harder questions are unlocked
+let lastId = null;
+function makeQuestion(only = [], weights = {}, harder = []) {
+  const unlocked = (g) => g.level === 1 || harder.includes(g.topic);
+  let pool = GENERATORS.filter((g) => only.includes(g.topic) && unlocked(g));
+  if (!pool.length) pool = GENERATORS.filter(unlocked);
+  if (pool.length > 1) pool = pool.filter((g) => g.id !== lastId); // no immediate repeats
+  const weight = (g) => weights[g.id] || 1;
+  let r = Math.random() * add(pool.map(weight));
+  const chosen = pool.find((g) => (r -= weight(g)) < 0) || pool[pool.length - 1];
+  lastId = chosen.id;
+  return { ...chosen.make(), id: chosen.id, topic: chosen.topic, level: chosen.level };
+}
+
+// A wrong answer doubles how often a question type comes up (up to 8 times the
+// normal rate). A right answer halves it (down to a quarter of the normal rate).
+const nextWeight = (weight = 1, correct) =>
+  correct ? Math.max(weight / 2, 0.25) : Math.min(weight * 2, 8);
+
+// A topic's harder questions unlock at 17 right out of its last 20 answers
+// (85%), and stay unlocked.
+const RECENT = 20, PASS = 17;
+
+// Returns the progress record updated with one answer. `today` is a date string.
+function recordAnswer(stats, question, correct, today) {
+  const recent = ((stats.recent[question.topic] || "") + (correct ? "1" : "0")).slice(-RECENT);
+  const passed = recent.length === RECENT && recent.split("1").length - 1 >= PASS;
+  const [right, total] = stats.days[today] || [0, 0];
+  const days = { ...stats.days, [today]: [right + (correct ? 1 : 0), total + 1] };
+  for (const old of Object.keys(days).sort().slice(0, -60)) delete days[old]; // keep 60 days
+  return {
+    weights: { ...stats.weights, [question.id]: nextWeight(stats.weights[question.id], correct) },
+    recent: { ...stats.recent, [question.topic]: recent },
+    harder: passed && !stats.harder.includes(question.topic) ? [...stats.harder, question.topic] : stats.harder,
+    days,
+  };
+}
+
+// The line shown above the code, and the words used when revealing the answer.
+const promptFor = (question) =>
+  question.prompt || (question.blank ? "What goes in the blank (____)?" : "What does this print?");
+const answerLabel = (question) =>
+  question.bug ? "the bug is on line" : question.blank ? "the blank is" : "it prints";
 
 // Forgiving comparison: ignores spacing, quote style, and quotes around a plain string.
 function isCorrect(input, accept) {
@@ -977,4 +1337,6 @@ function isCorrect(input, accept) {
 }
 
 // Lets the test script load this file in Node. Chrome ignores it.
-if (typeof module !== "undefined") module.exports = { makeQuestion, isCorrect, GENERATORS };
+if (typeof module !== "undefined") {
+  module.exports = { makeQuestion, isCorrect, nextWeight, recordAnswer, promptFor, answerLabel, GENERATORS, TOPICS, RECENT, PASS };
+}

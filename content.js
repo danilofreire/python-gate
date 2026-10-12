@@ -1,7 +1,6 @@
 // Covers blocked sites with a Python quiz until you have earned browsing time.
-// Each correct answer banks minutes; "Use minutes" spends the whole bank.
-
-const MINUTES_PER_CORRECT = 3;
+// Each correct answer banks minutes; "Use minutes" turns the bank into a
+// session that counts down only while a blocked tab is on screen.
 
 const CSS = `
   [hidden] { display: none !important; }
@@ -60,6 +59,7 @@ function start(saved) {
 
   const overlay = el("div", "overlay");
   const card = el("div", "card");
+  const rule = el("p", "rule");
   const prompt = el("p", "prompt");
   const code = el("pre");
   const form = el("form");
@@ -79,23 +79,34 @@ function start(saved) {
 
   form.append(input, submit);
   footer.append(bankLabel, spend);
-  card.append(
-    el("h1", "", "Earn your browsing time"),
-    el("p", "rule", `Each correct answer banks ${MINUTES_PER_CORRECT} minutes.`),
-    prompt, code, form, feedback, footer
-  );
+  card.append(el("h1", "", "Earn your browsing time"), rule, prompt, code, form, feedback, footer);
   overlay.append(card);
   shadow.append(style, overlay, pill);
   document.documentElement.append(host);
 
-  let state = { bank: saved.bank, unlockedUntil: saved.unlockedUntil };
+  let state = saved;
   let question = null;
-  let answered = false;
+  let phase = "ask"; // "ask" (first try), "retry" (second try) or "done"
+
+  // Harder questions are worth double.
+  const reward = () => state.minutes * question.level;
+
+  // Browsing time still allowed today, in ms. No daily limit means no ceiling.
+  const capLeft = () =>
+    state.dailyCap ? Math.max(0, state.dailyCap * 60000 - usedToday(state.used)) : Infinity;
+
+  const browsing = () => state.sessionLeft > 0 && capLeft() > 0;
+
+  // Saves a change and applies it here at once, without waiting for storage to echo it back.
+  const save = (patch) => {
+    Object.assign(state, patch);
+    chrome.storage.local.set(patch);
+  };
 
   function nextQuestion() {
-    question = makeQuestion();
-    answered = false;
-    prompt.textContent = question.blank ? "What goes in the blank (____)?" : "What does this print?";
+    question = makeQuestion(state.onlyTopics, state.stats.weights, state.stats.harder);
+    phase = "ask";
+    prompt.textContent = promptFor(question) + (question.level === 2 ? " (harder: double minutes)" : "");
     code.textContent = question.code;
     input.value = "";
     input.readOnly = false;
@@ -104,46 +115,83 @@ function start(saved) {
     input.focus();
   }
 
-  function render() {
-    const msLeft = state.unlockedUntil - Date.now();
-    const locked = msLeft <= 0;
-    overlay.hidden = !locked;
-    pill.hidden = locked;
+  function finish(className, text) {
+    phase = "done";
+    input.readOnly = true;
+    submit.textContent = "Next question";
+    feedback.className = "feedback " + className;
+    feedback.textContent = text;
+  }
 
-    if (locked) {
+  // Runs every second. The session only counts down while this tab is on
+  // screen. A gap of more than 2 seconds since the last count means no blocked
+  // tab was being watched, so that time is not charged.
+  function tick() {
+    if (!gatedNow(state.schedule) || !browsing() || document.visibilityState !== "visible") return;
+    const now = Date.now(), gap = now - state.tickAt;
+    const spent = gap > 0 && gap < 2000 ? gap : 0;
+    save({
+      sessionLeft: Math.max(0, state.sessionLeft - spent),
+      tickAt: now,
+      used: { day: dayKey(), ms: usedToday(state.used) + spent },
+    });
+  }
+
+  function render() {
+    // Outside the scheduled hours the site is simply open.
+    if (!gatedNow(state.schedule)) return (overlay.hidden = pill.hidden = true);
+
+    overlay.hidden = browsing();
+    pill.hidden = !browsing();
+
+    if (browsing()) {
+      question = null;
+      const s = Math.ceil(Math.min(state.sessionLeft, capLeft()) / 1000);
+      pill.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    } else {
       // Otherwise a YouTube video keeps playing behind the quiz.
       document.querySelectorAll("video").forEach((video) => video.pause());
+      const capped = capLeft() === 0;
+      rule.textContent = `Each correct answer banks ${state.minutes} min.`;
       bankLabel.textContent = `Banked: ${state.bank} min`;
-      spend.textContent = `Use ${state.bank} min`;
-      spend.disabled = state.bank === 0;
+      spend.textContent = capped ? "Daily limit reached" : `Use ${state.bank} min`;
+      spend.disabled = capped || state.bank === 0;
       if (!question) nextQuestion();
-    } else {
-      question = null;
-      const s = Math.ceil(msLeft / 1000);
-      pill.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     }
   }
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (answered) return nextQuestion();
+    if (phase === "done") return nextQuestion();
     if (!input.value.trim()) return;
 
-    answered = true;
-    input.readOnly = true;
-    submit.textContent = "Next question";
-    if (isCorrect(input.value, question.accept)) {
-      feedback.className = "feedback ok";
-      feedback.textContent = `Correct, +${MINUTES_PER_CORRECT} min. ${question.why}`;
-      chrome.storage.local.set({ bank: state.bank + MINUTES_PER_CORRECT });
+    const correct = isCorrect(input.value, question.accept);
+    const reveal = `Not quite, ${answerLabel(question)}: ${question.answer}\n${question.why}`;
+
+    if (phase === "retry") {
+      return correct ? finish("ok", `Right this time, but a second try earns no minutes. ${question.why}`) : finish("bad", reveal);
+    }
+
+    // Only the first try counts for progress and minutes.
+    const stats = recordAnswer(state.stats, question, correct, dayKey());
+    const unlocked = stats.harder.length > state.stats.harder.length
+      ? `\nHarder ${question.topic} questions are now unlocked.` : "";
+
+    if (correct) {
+      finish("ok", `Correct, +${reward()} min. ${question.why}${unlocked}`);
+      save({ stats, bank: state.bank + reward() });
     } else {
+      save({ stats });
+      phase = "retry";
       feedback.className = "feedback bad";
-      feedback.textContent = `Not quite, ${question.blank ? "the blank is" : "it prints"}: ${question.answer}\n${question.why}`;
+      feedback.textContent = "Not quite. Try once more before you see the answer.";
+      input.select();
     }
   });
 
   spend.addEventListener("click", () => {
-    chrome.storage.local.set({ bank: 0, unlockedUntil: Date.now() + state.bank * 60000 });
+    save({ bank: 0, sessionLeft: state.sessionLeft + state.bank * 60000, tickAt: Date.now() });
+    render();
   });
 
   // Stop the page's keyboard shortcuts from firing while you type an answer.
@@ -160,10 +208,13 @@ function start(saved) {
   });
 
   render();
-  setInterval(render, 1000);
+  setInterval(() => {
+    tick();
+    render();
+  }, 1000);
 }
 
 // The script loads on every page but only acts on sites in the block list.
-chrome.storage.local.get({ sites: DEFAULT_SITES, bank: 0, unlockedUntil: 0 }).then((saved) => {
+loadState().then((saved) => {
   if (matchesSite(location.hostname, saved.sites)) start(saved);
 });

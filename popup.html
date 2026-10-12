@@ -3,29 +3,84 @@
 <head>
   <meta charset="utf-8">
   <style>
+    [hidden] { display: none !important; }
     body {
-      width: 260px; margin: 0; padding: 14px;
+      width: 340px; margin: 0; padding: 14px;
       background: #14161a; color: #e8e6e3;
       font: 14px/1.4 -apple-system, "Segoe UI", sans-serif;
     }
     h1 { font-size: 16px; margin: 0; }
-    #bank { margin: 2px 0 12px; color: #9aa0a6; }
+    h2 { font-size: 12px; margin: 16px 0 4px; color: #9aa0a6; font-weight: 600; }
+    p { margin: 0; }
+    .muted, .score, .hint { color: #9aa0a6; font-size: 12px; }
+    .hint { margin: 0 0 6px; }
+    #summary { margin: 2px 0 12px; }
     button { border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
     button:disabled { opacity: 0.5; cursor: default; }
-    #block { width: 100%; padding: 8px; background: #4b8bbe; color: #fff; font-weight: 600; }
-    h2 { font-size: 12px; margin: 16px 0 4px; color: #9aa0a6; font-weight: 600; }
+    .primary { padding: 8px; background: #4b8bbe; color: #fff; font-weight: 600; }
+    .small { padding: 2px 8px; background: #2a2e35; color: #9aa0a6; font-size: 12px; }
+    #block { width: 100%; }
     ul { list-style: none; margin: 0; padding: 0; }
-    li { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    li, .row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
     li button { padding: 2px 8px; background: #2a2e35; color: #ff8f8f; }
+    label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    input[type="number"], input[type="time"], input[type="text"] {
+      padding: 3px 6px; border: 1px solid #3a3f47; border-radius: 6px;
+      background: #1f2329; color: inherit; font: inherit; color-scheme: dark;
+    }
+    input[type="number"] { width: 52px; }
+    #save { margin: 6px 0; }
+    #reset { margin-top: 8px; }
+    pre {
+      margin: 8px 0; padding: 10px; border-radius: 6px; overflow-x: auto;
+      background: #1f2329; font: 12px/1.5 Menlo, Consolas, monospace;
+    }
+    #challenge form { display: flex; gap: 6px; }
+    #challenge input { flex: 1; font-family: Menlo, Consolas, monospace; }
+    #challenge-feedback { min-height: 36px; margin: 8px 0; color: #ff8f8f; white-space: pre-line; }
   </style>
 </head>
 <body>
-  <h1>Python Gate</h1>
-  <p id="bank"></p>
-  <button id="block"></button>
-  <h2>Blocked sites</h2>
-  <ul id="sites"></ul>
+  <div id="main">
+    <h1>Python Gate</h1>
+    <p id="summary" class="muted"></p>
+    <button id="block" class="primary"></button>
+
+    <h2>Settings</h2>
+    <div class="row"><label for="minutes">Minutes per correct answer</label><input id="minutes" type="number" min="1" max="60"></div>
+    <div class="row"><label for="cap">Daily browsing limit in minutes (0 = none)</label><input id="cap" type="number" min="0" max="600"></div>
+    <div class="row">
+      <label><input id="schedule-on" type="checkbox"> Gate only from</label>
+      <span><input id="from" type="time"> to <input id="to" type="time"></span>
+    </div>
+    <div class="row"><label><input id="weekdays" type="checkbox"> Monday to Friday only</label></div>
+    <button id="save" class="small">Save settings</button>
+    <p class="hint">Loosening the gate (more minutes, a higher limit, fewer gated hours, removing a site) takes 5 correct answers in a row.</p>
+
+    <h2>Topics</h2>
+    <p class="hint">Tick topics to practise only those. With none ticked, questions come from all topics. Scores cover your last 20 answers per topic. At 17 right, harder questions join in, worth double minutes.</p>
+    <ul id="topics"></ul>
+    <button id="reset" class="small">Reset progress</button>
+
+    <h2>Blocked sites</h2>
+    <ul id="sites"></ul>
+  </div>
+
+  <div id="challenge" hidden>
+    <h1>Answer 5 in a row</h1>
+    <p id="challenge-what" class="muted"></p>
+    <h2 id="challenge-prompt"></h2>
+    <pre id="challenge-code"></pre>
+    <form id="challenge-form">
+      <input id="challenge-input" type="text" autocomplete="off" spellcheck="false" placeholder="Your answer">
+      <button id="challenge-submit" class="primary">Check</button>
+    </form>
+    <p id="challenge-feedback"></p>
+    <div class="row"><span id="challenge-progress" class="muted"></span><button id="challenge-cancel" class="small" type="button">Cancel</button></div>
+  </div>
+
   <script src="sites.js"></script>
+  <script src="questions.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
