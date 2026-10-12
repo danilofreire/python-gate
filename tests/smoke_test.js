@@ -27,7 +27,7 @@ function makeEnv(store, extra = {}) {
     location: { hostname: "www.youtube.com" },
     window: { addEventListener() {}, close() { env.closed = true; } },
     document: {
-      visibilityState: "visible", documentElement: fakeEl("html"),
+      visibilityState: "visible", documentElement: fakeEl("html"), addEventListener() {},
       createElement(tag) { const e = fakeEl(tag); created.push(e); return e; },
       getElementById(id) { return (byId[id] = byId[id] || fakeEl(id)); },
       querySelectorAll() { return []; },
@@ -50,12 +50,15 @@ function makeEnv(store, extra = {}) {
         reload() { env.reloaded = true; },
         create({ url }) { env.opened = url; },
       },
-      runtime: { getURL: (file) => `chrome-extension://test/${file}` },
+      runtime: {
+        getURL: (file) => `chrome-extension://test/${file}`,
+        sendMessage(message) { env.badges.push(message); return Promise.resolve(); },
+      },
     },
     ...extra.globals,
   };
   env.advance = (ms) => { clock += ms; intervals.forEach((fn) => fn()); };
-  env.created = created; env.byId = byId; env.store = store;
+  env.created = created; env.byId = byId; env.store = store; env.badges = [];
   return vm.createContext(env);
 }
 const load = (env, files) => files.forEach((f) => vm.runInContext(read(f), env, { filename: f }));
@@ -171,6 +174,12 @@ const settle = () => new Promise((r) => setImmediate(r));
   const lists = $("topics").children.find((li) => li.children[0].children[1] === "Lists");
   assert.equal(lists.children[1].textContent, "3/4 · harder on");
 
+  // a running countdown shows in the summary and follows storage changes
+  await penv.chrome.storage.local.set({ sessionLeft: 155000 });
+  assert(/Banked: 0 min · browsing left: 2:35 · today/.test($("summary").textContent), $("summary").textContent);
+  await penv.chrome.storage.local.set({ sessionLeft: 0 });
+  assert(!/browsing left/.test($("summary").textContent));
+
   // tightening settings saves at once
   $("minutes").value = "2"; $("cap").value = "20";
   $("save").fire("click"); await settle();
@@ -239,6 +248,31 @@ const settle = () => new Promise((r) => setImmediate(r));
 
   // files that are not backups are refused
   for (const junk of [null, [], "text", {}, { app: "other" }]) assert.equal(restoreBackup(mine, junk), null);
+
+  // ---------- toolbar badge (background.js) ----------
+  // the quiz reported the right badge at each stage (see env.badges)
+  const texts = env.badges.map((m) => `${m.badge}${m.running ? "b" : "y"}`);
+  assert.equal(texts[0], "y", "nothing banked at first: no badge");
+  assert(texts.includes("3y"), "banked minutes in yellow");
+  assert(texts.includes("3b") && texts.includes("1b"), "minutes left in blue, counting down");
+  assert.equal(env2.badges.length, 0, "unlisted sites never set a badge");
+
+  // the background script applies a report to the sending tab only
+  const calls = [];
+  let onMessage;
+  const benv = vm.createContext({ chrome: {
+    runtime: { onMessage: { addListener: (fn) => (onMessage = fn) }, onInstalled: { addListener() {} } },
+    action: {
+      setBadgeText: (o) => calls.push(o),
+      setBadgeBackgroundColor: (o) => calls.push(o),
+      setBadgeTextColor() {},
+    },
+  } });
+  vm.runInContext(read("background.js"), benv);
+  onMessage({ badge: "6", running: false }, { tab: { id: 7 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ tabId: 7, text: "6" }, { tabId: 7, color: "#ffd43b" }]);
+  onMessage({ badge: "2", running: true }, {}); // not from a tab: ignored
+  assert.equal(calls.length, 2);
 
   console.log("smoke test passed");
 })().catch((err) => { console.error(err); process.exit(1); });

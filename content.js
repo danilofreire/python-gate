@@ -140,7 +140,23 @@ function start(saved) {
     });
   }
 
+  // Tells the background script what the toolbar icon should show on this tab:
+  // minutes left while browsing, banked minutes otherwise, nothing when zero
+  // or outside the scheduled hours. Sent when it changes, and repeated every
+  // 3 seconds while the tab is on screen in case Chrome dropped the badge.
+  let lastBadge = null, lastBadgeAt = 0;
+  function showBadge() {
+    if (document.visibilityState !== "visible") return;
+    const gated = gatedNow(state.schedule), running = gated && browsing();
+    const minutes = !gated ? 0 : running ? Math.ceil(Math.min(state.sessionLeft, capLeft()) / 60000) : state.bank;
+    const message = { badge: minutes ? String(minutes) : "", running };
+    if (JSON.stringify(message) === lastBadge && Date.now() - lastBadgeAt < 3000) return;
+    [lastBadge, lastBadgeAt] = [JSON.stringify(message), Date.now()];
+    chrome.runtime.sendMessage(message).catch(() => {}); // fails harmlessly while the extension reloads
+  }
+
   function render() {
+    showBadge();
     // Outside the scheduled hours the site is simply open.
     if (!gatedNow(state.schedule)) return (overlay.hidden = pill.hidden = true);
 
@@ -210,6 +226,7 @@ function start(saved) {
     render();
   });
 
+  document.addEventListener("visibilitychange", render); // refresh as soon as the tab comes back
   render();
   setInterval(() => {
     tick();

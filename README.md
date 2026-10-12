@@ -15,6 +15,7 @@ The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/sta
 - The countdown runs only while a blocked tab is on screen, so you can spread the time over the day
 - When the countdown ends, the quiz returns on every blocked tab
 - All blocked sites share one bank
+- On a blocked site, the toolbar icon shows your minutes: banked minutes in yellow, or browsing time left in blue while the countdown runs
 
 ## Install
 
@@ -146,6 +147,7 @@ To add questions, edit the `BANK` list in `questions.js` and run both scripts ag
 | `questions.js` | Question generators, answer checking and progress rules |
 | `content.js` | Quiz screen, time bank and countdown |
 | `popup.html`, `popup.js` | Toolbar popup: block list, settings, topics and progress |
+| `background.js` | Minutes shown on the toolbar icon |
 | `backup.html`, `backup.js` | Backup and restore page |
 | `tests/` | The two test scripts |
 | `screenshots/` | Images used in this README, made with sample data |

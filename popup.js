@@ -49,17 +49,28 @@ function challenge(what, apply) {
   ask();
 }
 
+function showSummary() {
+  const [right, total] = state.stats.days[dayKey()] || [0, 0];
+  const days = streak(state.stats.days);
+  const left = Math.ceil(state.sessionLeft / 1000);
+  const parts = [`Banked: ${state.bank} min`];
+  if (left > 0) parts.push(`browsing left: ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`);
+  parts.push(`today: ${right} of ${total} right`, `streak: ${days} ${days === 1 ? "day" : "days"}`);
+  if (state.dailyCap) parts.push(`used: ${Math.floor(usedToday(state.used) / 60000)} of ${state.dailyCap} min`);
+  $("summary").textContent = parts.join(" · ");
+}
+
 async function main() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   state = await loadState();
   const { sites, stats, schedule } = state;
 
-  // ---- summary line ----
-  const [right, total] = stats.days[dayKey()] || [0, 0];
-  const days = streak(stats.days);
-  const parts = [`Banked: ${state.bank} min`, `today: ${right} of ${total} right`, `streak: ${days} ${days === 1 ? "day" : "days"}`];
-  if (state.dailyCap) parts.push(`used: ${Math.floor(usedToday(state.used) / 60000)} of ${state.dailyCap} min`);
-  $("summary").textContent = parts.join(" · ");
+  // ---- summary line, kept current while the popup is open ----
+  showSummary();
+  chrome.storage.onChanged.addListener((changes) => {
+    for (const key in changes) state[key] = changes[key].newValue;
+    showSummary();
+  });
 
   // ---- block the current site ----
   // Only ordinary web pages can be blocked, not chrome:// pages or local files.
