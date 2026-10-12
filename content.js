@@ -13,6 +13,7 @@ const CSS = `
   .card { width: min(560px, 90vw); }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .rule { margin: 0 0 20px; color: #9aa0a6; }
+  .topic { margin: 0 0 2px; color: #9aa0a6; font-size: 13px; }
   .prompt { margin: 0 0 8px; font-weight: 600; }
   pre {
     margin: 0 0 16px; padding: 16px; border-radius: 8px; overflow-x: auto;
@@ -60,6 +61,7 @@ function start(saved) {
   const overlay = el("div", "overlay");
   const card = el("div", "card");
   const rule = el("p", "rule");
+  const topicLine = el("p", "topic");
   const prompt = el("p", "prompt");
   const code = el("pre");
   const form = el("form");
@@ -79,7 +81,7 @@ function start(saved) {
 
   form.append(input, submit);
   footer.append(bankLabel, spend);
-  card.append(el("h1", "", "Earn your browsing time"), rule, prompt, code, form, feedback, footer);
+  card.append(el("h1", "", "Earn your browsing time"), rule, topicLine, prompt, code, form, feedback, footer);
   overlay.append(card);
   shadow.append(style, overlay, pill);
   document.documentElement.append(host);
@@ -106,7 +108,8 @@ function start(saved) {
   function nextQuestion() {
     question = makeQuestion(state.onlyTopics, state.stats.weights, state.stats.harder);
     phase = "ask";
-    prompt.textContent = promptFor(question) + (question.level === 2 ? " (harder: double minutes)" : "");
+    topicLine.textContent = question.topic + (question.level === 2 ? " · harder, double minutes" : "");
+    prompt.textContent = promptFor(question);
     code.textContent = question.code;
     input.value = "";
     input.readOnly = false;

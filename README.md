@@ -4,15 +4,17 @@ A Chrome extension that makes you answer short Python questions before you can o
 
 The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/status/2109660673663729989), who did the same with mental maths and sudoku.
 
+![The quiz covering a blocked site, with a pandas groupby question](screenshots/quiz.png)
+
 ## How it works
 
 - A blocked site opens behind a full-page quiz
 - Each correct answer banks 3 minutes. You can change this number
 - After a wrong answer you get one more try, which earns no minutes. Then the quiz shows the answer with a one-line explanation
 - "Use N min" turns the bank into browsing time and starts a countdown in the bottom-right corner
-- The countdown runs only while a blocked tab is on screen, so switching to other work does not waste it
+- The countdown runs only while a blocked tab is on screen, so you can spread the time over the day
 - When the countdown ends, the quiz returns on every blocked tab
-- The bank is shared across all blocked sites
+- All blocked sites share one bank
 
 ## Install
 
@@ -36,22 +38,29 @@ Blocking a site also blocks its subdomains, so `youtube.com` covers `m.youtube.c
 
 ## Settings
 
-Click the Python Gate icon to change the settings, then press "Save settings".
+Click the Python Gate icon to open the popup. Change the settings there, then press "Save settings".
+
+<img src="screenshots/popup.png" width="340" alt="The toolbar popup, with settings, topics, scores and blocked sites">
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | Minutes per correct answer | 3 | Time banked by each correct answer, from 1 to 60 |
 | Daily browsing limit | none | Most minutes you can spend on blocked sites per day |
-| Gate only from ... to ... | off | Hours when the gate is on. When off, the gate is always on |
-| Monday to Friday only | off | Leaves weekends open. It applies when the hours above are on |
+| Gate only during set hours | off | Hours when the gate is on. When off, the gate is always on |
+| Monday to Friday only | off | Leaves weekends open. It applies when set hours are on |
 
-A time window can run past midnight, such as 22:00 to 06:00. Outside the gated hours, blocked sites open normally and use no banked time.
+The set hours can run past midnight, such as 22:00 to 06:00. Outside them, blocked sites open normally and use no banked time.
 
-Any change that loosens the gate takes 5 correct answers in a row: more minutes per answer, a higher or removed daily limit, fewer gated hours, or removing a site. Changes that tighten the gate save at once.
+Changes that tighten the gate save at once. Changes that loosen it take 5 correct answers in a row:
+
+- more minutes per answer
+- a higher daily limit, or none
+- fewer gated hours
+- removing a site
 
 ## Questions
 
-There are 142 question types in 12 topics. Each one uses random values, so questions rarely repeat exactly.
+There are 142 question types in 12 topics. Each type uses random values, so questions rarely repeat exactly.
 
 | Topic | Types | Harder | Examples |
 |-------|-------|--------|----------|
@@ -68,7 +77,7 @@ There are 142 question types in 12 topics. Each one uses random values, so quest
 | pandas merge | 4 | 2 | inner, left, right and outer merges, suffixes |
 | Matplotlib | 6 | 2 | plot types, labels, `subplots`, `df.plot` |
 
-There are three kinds of question:
+A question takes one of three forms:
 
 - What does this snippet print?
 - What goes in the blank? The code has one `____` and you type the missing piece
@@ -78,43 +87,68 @@ Answers ignore spacing and quote style. Capital letters count (`True`, not `true
 
 ## Topics and progress
 
-The popup also lets you choose what you practise and shows how you are doing.
+In the popup you choose what to practise and see how you are doing.
 
 - With no topic ticked, questions come from all topics. This is the default
 - Tick one or more topics to practise only those
-- The score next to each topic covers your last 20 answers in it, such as `17/20`
+- The quiz shows the topic above each question
+- The score next to a topic covers your last 20 answers in it, such as `17/20`
 - At 17 right out of 20, the topic's harder questions join in. They are worth double minutes and stay unlocked
 - A wrong answer makes that question type come up twice as often, up to 8 times the normal rate
 - A right answer halves the rate, down to a quarter of normal
 - The top line shows your banked minutes, today's answers and how many days in a row you have practised
 - "Reset progress" clears the scores, the rates, the unlocked harder questions and the daily counts
 
+## Backup
+
+Chrome deletes an extension's data when you remove the extension. To keep your progress, press "Back up or restore" in the popup. A page opens with two options.
+
+- "Download backup" saves your blocked sites, settings, ticked topics and progress as a file
+- Choosing a backup file restores it
+
+A backup holds no banked minutes, so restoring one never gives time back. A restore also cannot loosen the gate:
+
+- progress and ticked topics are replaced
+- sites in the file are added to your block list, and none are removed
+- settings are restored only if they are as strict as your current ones
+
 ## Permissions
 
-Chrome will say the extension can read and change data on all websites. It needs this so you can block any site from the toolbar. On sites outside your block list it checks the address and does nothing else. It makes no network requests, and your block list, settings and progress stay in Chrome's local storage.
+Chrome will say the extension can read and change data on all websites. The extension needs this so you can block any site from the toolbar. On sites outside your block list it checks the address and does nothing else.
+
+Python Gate makes no network requests. Your block list, settings and progress stay in Chrome's local storage.
 
 Chrome switches extensions off in Incognito windows unless you allow them, so the gate does not apply there by default.
 
-## Check the answers
+## Tests
 
-`tests/check_answers.py` generates 300 versions of every question, runs each snippet in real Python and compares the output with the extension's answer. It also checks the topic selection, the progress rules and the schedule. It needs Node, pandas, NumPy and Matplotlib.
+| Script | What it checks | Needs |
+|--------|----------------|-------|
+| `tests/check_answers.py` | Runs 300 versions of every question in real Python and compares the output with the extension's answer. Also checks topic selection, progress rules and the schedule | Node, pandas, NumPy, Matplotlib |
+| `tests/smoke_test.js` | Runs the quiz and the popup against a simulated page: retry, minutes, countdown, daily limit, schedule, the 5-in-a-row rule and backups | Node |
 
 ```bash
 python3 tests/check_answers.py
 ```
 
-To add questions, edit the `BANK` list in `questions.js` and run the script again.
+```bash
+node tests/smoke_test.js
+```
+
+To add questions, edit the `BANK` list in `questions.js` and run both scripts again.
 
 ## Files
 
 | File | Contents |
 |------|----------|
 | `manifest.json` | Extension settings |
-| `sites.js` | Stored settings, default block list, schedule and streak helpers |
+| `sites.js` | Stored settings, default block list, schedule, streak and backup rules |
 | `questions.js` | Question generators, answer checking and progress rules |
 | `content.js` | Quiz screen, time bank and countdown |
 | `popup.html`, `popup.js` | Toolbar popup: block list, settings, topics and progress |
-| `tests/check_answers.py` | Checks every question against real Python |
+| `backup.html`, `backup.js` | Backup and restore page |
+| `tests/` | The two test scripts |
+| `screenshots/` | Images used in this README, made with sample data |
 
 ## Licence
 

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <title>Python Gate backup</title>
+  <style>
+    body {
+      max-width: 520px; margin: 48px auto; padding: 0 16px;
+      background: #14161a; color: #e8e6e3;
+      font: 16px/1.5 -apple-system, "Segoe UI", sans-serif;
+    }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; margin-top: 32px; }
+    li { margin: 4px 0; }
+    button {
+      padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer;
+      background: #4b8bbe; color: #fff; font: inherit; font-weight: 600;
+    }
+    input { color: inherit; font: inherit; }
+    #status { min-height: 48px; color: #7bd88f; }
+  </style>
+</head>
+<body>
+  <h1>Python Gate backup</h1>
+  <p>A backup file holds your blocked sites, settings, ticked topics and progress. Banked minutes are not included.</p>
+  <button id="export">Download backup</button>
+
+  <h2>Restore from a backup file</h2>
+  <ul>
+    <li>Progress and ticked topics are replaced</li>
+    <li>Sites in the file are added to your block list</li>
+    <li>Settings are restored only if they do not loosen the gate</li>
+  </ul>
+  <input id="file" type="file" accept=".json,application/json">
+  <p id="status"></p>
+
+  <script src="sites.js"></script>
+  <script src="backup.js"></script>
+</body>
+</html>

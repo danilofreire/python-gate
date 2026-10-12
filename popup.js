@@ -106,14 +106,11 @@ async function main() {
         weekdays: $("weekdays").checked,
       },
     };
-    const looser = next.minutes > state.minutes
-      || (state.dailyCap > 0 && (next.dailyCap === 0 || next.dailyCap > state.dailyCap))
-      || loosensSchedule(schedule, next.schedule);
     const apply = async () => {
       await chrome.storage.local.set(next);
       window.close();
     };
-    if (looser) challenge("save looser settings", apply);
+    if (loosensSettings(state, next)) challenge("save looser settings", apply);
     else apply();
   });
 
@@ -160,6 +157,12 @@ async function main() {
     item.append(remove);
     $("sites").append(item);
   }
+
+  // ---- backup: opens in a tab, because a popup closes when a file dialog opens ----
+  $("backup").addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("backup.html") });
+    window.close();
+  });
 }
 
 main();

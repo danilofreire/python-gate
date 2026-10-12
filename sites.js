@@ -75,7 +75,71 @@ function loosensSchedule(prev, next) {
   return false;
 }
 
-// Lets the test script load this file in Node. Chrome ignores it.
+// True when the settings in `next` are looser than in `prev`: more minutes per
+// answer, a higher or removed daily limit, or fewer gated hours.
+const loosensSettings = (prev, next) =>
+  next.minutes > prev.minutes
+  || (prev.dailyCap > 0 && (next.dailyCap === 0 || next.dailyCap > prev.dailyCap))
+  || loosensSchedule(prev.schedule, next.schedule);
+
+// What a backup file holds. Banked and spent time are left out on purpose, so
+// restoring a backup can never hand back minutes.
+const makeBackup = (state) => ({
+  app: "python-gate",
+  saved: dayKey(),
+  sites: state.sites,
+  minutes: state.minutes,
+  dailyCap: state.dailyCap,
+  schedule: state.schedule,
+  onlyTopics: state.onlyTopics,
+  stats: state.stats,
+});
+
+// Works out what to store when restoring `backup` over the current `state`.
+// - progress and ticked topics are replaced
+// - sites are added to the list, never removed
+// - settings are taken only if they do not loosen the gate (see keptSettings)
+// Returns null if the file is not a Python Gate backup.
+function restoreBackup(state, backup) {
+  const isObject = (v) => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const whole = (v, low, high, fallback) => (Number.isInteger(v) && v >= low && v <= high ? v : fallback);
+  const time = (v, fallback) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : fallback);
+  if (!isObject(backup) || backup.app !== "python-gate") return null;
+
+  const schedule = isObject(backup.schedule) ? backup.schedule : {};
+  const settings = {
+    minutes: whole(backup.minutes, 1, 60, state.minutes),
+    dailyCap: whole(backup.dailyCap, 0, 600, state.dailyCap),
+    schedule: {
+      on: schedule.on === true,
+      from: time(schedule.from, state.schedule.from),
+      to: time(schedule.to, state.schedule.to),
+      weekdays: schedule.weekdays === true,
+    },
+  };
+  const stats = isObject(backup.stats) ? backup.stats : {};
+  const keptSettings = !loosensSettings(state, settings);
+  return {
+    keptSettings,
+    patch: {
+      ...(keptSettings ? settings : {}),
+      sites: [...new Set([...state.sites, ...strings(backup.sites)])],
+      onlyTopics: strings(backup.onlyTopics),
+      stats: {
+        weights: isObject(stats.weights) ? stats.weights : {},
+        recent: isObject(stats.recent) ? stats.recent : {},
+        harder: strings(stats.harder),
+        days: isObject(stats.days) ? stats.days : {},
+      },
+    },
+  };
+}
+
+// Lets the test scripts load this file in Node. Chrome ignores it.
 if (typeof module !== "undefined") {
-  module.exports = { DEFAULT_SITES, DEFAULTS, matchesSite, dayKey, usedToday, streak, gatedAt, gatedNow, loosensSchedule };
+  module.exports = {
+    DEFAULT_SITES, DEFAULTS, matchesSite, dayKey, usedToday, streak, gatedAt, gatedNow,
+    loosensSchedule, loosensSettings, makeBackup, restoreBackup,
+  };
 }

@@ -29,6 +29,7 @@
       background: #1f2329; color: inherit; font: inherit; color-scheme: dark;
     }
     input[type="number"] { width: 52px; }
+    .hours { padding-left: 26px; }
     #save { margin: 6px 0; }
     #reset { margin-top: 8px; }
     pre {
@@ -49,10 +50,8 @@
     <h2>Settings</h2>
     <div class="row"><label for="minutes">Minutes per correct answer</label><input id="minutes" type="number" min="1" max="60"></div>
     <div class="row"><label for="cap">Daily browsing limit in minutes (0 = none)</label><input id="cap" type="number" min="0" max="600"></div>
-    <div class="row">
-      <label><input id="schedule-on" type="checkbox"> Gate only from</label>
-      <span><input id="from" type="time"> to <input id="to" type="time"></span>
-    </div>
+    <div class="row"><label><input id="schedule-on" type="checkbox"> Gate only during set hours</label></div>
+    <div class="row"><span class="hours">From <input id="from" type="time"> to <input id="to" type="time"></span></div>
     <div class="row"><label><input id="weekdays" type="checkbox"> Monday to Friday only</label></div>
     <button id="save" class="small">Save settings</button>
     <p class="hint">Loosening the gate (more minutes, a higher limit, fewer gated hours, removing a site) takes 5 correct answers in a row.</p>
@@ -64,6 +63,9 @@
 
     <h2>Blocked sites</h2>
     <ul id="sites"></ul>
+
+    <h2>Backup</h2>
+    <button id="backup" class="small">Back up or restore</button>
   </div>
 
   <div id="challenge" hidden>
