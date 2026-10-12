@@ -35,17 +35,21 @@ Blocking a site also blocks its subdomains, so `youtube.com` covers `m.youtube.c
 
 ## Questions
 
-There are 71 question types. Each one uses random values, so questions rarely repeat exactly.
+There are 92 question types. Each one uses random values, so questions rarely repeat exactly.
 
 | Topic | Types | Examples |
 |-------|-------|----------|
 | Python basics | 31 | operators, strings, lists, loops, conditions, dictionaries |
+| List methods | 6 | `pop`, `insert`, `append` versus `extend`, `sort`, copies |
+| String formatting | 5 | `:.2f`, `:,`, `:.1%`, zero padding, `round` |
 | pandas | 12 | filtering, `groupby`, `sort_values`, missing values |
+| pandas merge | 4 | inner, left, right and outer merges, suffixes |
 | NumPy | 9 | indexing, `axis`, boolean masks, `reshape` |
 | Reading functions | 10 | scope, missing `return`, keyword arguments, lambdas |
 | Writing functions | 9 | fill in the blank: `return`, `def`, parameters, defaults |
+| Plotting | 6 | Matplotlib calls, labels, `subplots`, `df.plot` |
 
-Most questions ask what a snippet prints. The "writing functions" questions show code with one `____` and ask for the missing piece.
+Most questions ask what a snippet prints. The "writing functions" questions and most plotting questions show code with one `____` and ask for the missing piece.
 
 Answers ignore spacing and quote style. Capital letters count (`True`, not `true`), and so does `3.0` versus `3`.
 
@@ -61,7 +65,7 @@ Chrome will say the extension can read and change data on all websites. It needs
 
 ## Check the answers
 
-`tests/check_answers.py` generates 300 versions of every question, runs each snippet in real Python and compares the output with the extension's answer. It needs Node, pandas and NumPy.
+`tests/check_answers.py` generates 300 versions of every question, runs each snippet in real Python and compares the output with the extension's answer. It needs Node, pandas, NumPy and Matplotlib.
 
 ```bash
 python3 tests/check_answers.py

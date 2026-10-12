@@ -61,6 +61,29 @@ function matrix() {
 }
 const NP = "import numpy as np\n";
 
+// Fill-in question with no printed output (plots). `verify` is Python that the
+// test script runs after the filled-in code; it must not raise an error.
+const fv = (code, accept, why, verify) => ({ code, answer: accept[0], accept, blank: true, verify, why });
+
+const PLT = "import matplotlib.pyplot as plt\n";
+const XY = PLT + "x = [1, 2, 3, 4]\ny = [2, 4, 5, 8]\n";
+
+// A decimal number as text, with digits chosen so rounding never lands on a tie.
+const decimal = (places) =>
+  `${rand(1, 99)}.${Array.from({ length: places }, (_, i) => (i === places - 1 ? pick([1, 2, 3, 4, 6, 7, 8, 9]) : rand(0, 9))).join("")}`;
+
+// Two small tables for merge questions, plus the Python code that builds them.
+function tables() {
+  const names = NAMES, ids = [1, 2, rand(1, 3), rand(1, 3)];
+  const courseIds = pick([[1, 2], [1, 2, 4]]);
+  const titles = ["Stats", "Python", "Ethics"].slice(0, courseIds.length);
+  const setup = `import pandas as pd\nstudents = pd.DataFrame({\n    "name": ${src(names)},\n    "course_id": ${src(ids)},\n})\n`
+    + `courses = pd.DataFrame({\n    "course_id": ${src(courseIds)},\n    "title": ${src(titles)},\n})\n`;
+  const matched = ids.filter((i) => courseIds.includes(i)).length;
+  const unused = courseIds.filter((c) => !ids.includes(c)).length;
+  return { names, ids, courseIds, titles, setup, matched, unused };
+}
+
 const frameCode = (city, sales) =>
   `import pandas as pd\ndf = pd.DataFrame({\n    "city": ${src(city)},\n    "sales": ${src(sales)},\n})\n`;
 
@@ -564,6 +587,188 @@ const GENERATORS = [
     const p = rand(2, 9), n = rand(2, 5);
     return fb("def total_price(price, quantity):\n    total = price * quantity\n    return ____", `total_price(${p}, ${n})`, p * n,
       ["total", "price * quantity", "quantity * price"], "The function has to return the value it computed.");
+  },
+
+  // ---- list methods ----
+  () => {
+    const xs = nums(4), setup = `xs = ${src(xs)}\n`;
+    return pick([
+      q(setup + `print(xs.pop())`, xs[3], ".pop() removes the last item and returns it."),
+      q(setup + `xs.pop()\nprint(xs)`, xs.slice(0, 3), ".pop() removes the last item from the list."),
+      q(setup + `xs.pop(0)\nprint(xs)`, xs.slice(1), ".pop(0) removes the item at index 0."),
+    ]);
+  },
+  () => {
+    const xs = nums(3), v = rand(30, 50), i = rand(0, 2);
+    const inserted = [...xs];
+    inserted.splice(i, 0, v);
+    const [a, b, c] = distinct(3);
+    return pick([
+      q(`xs = ${src(xs)}\nxs.insert(${i}, ${v})\nprint(xs)`, inserted, ".insert(i, value) puts the value at index i and shifts the rest to the right."),
+      q(`xs = ${src([a, b, a, c])}\nxs.remove(${a})\nprint(xs)`, [b, a, c], ".remove(value) deletes only the first match."),
+    ]);
+  },
+  () => {
+    const xs = nums(2), ys = nums(2), setup = `xs = ${src(xs)}\n`;
+    return pick([
+      q(setup + `xs.append(${src(ys)})\nprint(len(xs))`, 3, ".append() adds its argument as one item, so the inner list counts once."),
+      q(setup + `xs.extend(${src(ys)})\nprint(len(xs))`, 4, ".extend() adds each item of the other list separately."),
+      q(setup + `ys = ${src(ys)}\nprint(xs + ys)`, [...xs, ...ys], "+ joins two lists into a new list."),
+    ]);
+  },
+  () => {
+    const [a, b, c] = distinct(3), setup = `xs = ${src([a, b, a, c, a])}\n`;
+    return pick([
+      q(setup + `print(xs.count(${a}))`, 3, ".count(value) counts how many times the value appears."),
+      q(setup + `print(xs.index(${c}))`, 3, ".index(value) returns the position of the value."),
+      q(setup + `print(xs.index(${a}))`, 0, ".index(value) returns the position of the first match."),
+    ]);
+  },
+  () => {
+    const xs = distinct(4), setup = `xs = ${src(xs)}\n`;
+    const sorted = [...xs].sort((a, b) => a - b);
+    return pick([
+      q(setup + `xs.sort()\nprint(xs)`, sorted, ".sort() reorders the list itself, from smallest to largest."),
+      q(setup + `print(xs.sort())`, "None", ".sort() changes the list in place and returns None. Use sorted(xs) to get a new list."),
+      q(setup + `xs.sort(reverse=True)\nprint(xs[0])`, sorted[3], "reverse=True sorts from largest to smallest."),
+      q(setup + `xs.reverse()\nprint(xs)`, [...xs].reverse(), ".reverse() flips the order. It does not sort."),
+    ]);
+  },
+  () => {
+    const xs = nums(3), setup = `xs = ${src(xs)}\n`;
+    return pick([
+      q(setup + `ys = xs\nys.append(0)\nprint(len(xs))`, 4, "ys = xs gives the same list a second name, so the change shows in both."),
+      q(setup + `ys = xs.copy()\nys.append(0)\nprint(len(xs))`, 3, ".copy() makes a separate list, so xs does not change."),
+    ]);
+  },
+
+  // ---- string formatting ----
+  () => {
+    const x = decimal(3);
+    return pick([
+      q(`x = ${x}\nprint(f"{x:.2f}")`, Number(x).toFixed(2), ":.2f rounds to 2 decimal places."),
+      q(`x = ${x}\nprint(f"{x:.1f}")`, Number(x).toFixed(1), ":.1f rounds to 1 decimal place."),
+      q(`x = ${x}\nprint(f"{x:.0f}")`, Number(x).toFixed(0), ":.0f rounds to a whole number and shows no decimal point."),
+    ]);
+  },
+  () => {
+    const n = rand(1000, 9999999), k = rand(11, 989);
+    return pick([
+      q(`n = ${n}\nprint(f"{n:,}")`, n.toLocaleString("en-US"), ":, adds a comma between every three digits."),
+      q(`p = 0.${String(k).padStart(3, "0")}\nprint(f"{p:.1%}")`, (k / 10).toFixed(1) + "%", ":.1% multiplies by 100, keeps 1 decimal place and adds the % sign."),
+    ]);
+  },
+  () => {
+    const n = rand(1, 99);
+    return pick([
+      q(`n = ${n}\nprint(f"{n:03d}")`, String(n).padStart(3, "0"), ":03d pads the number with zeros until it has 3 digits."),
+      q(`print(str(${n}).zfill(4))`, String(n).padStart(4, "0"), ".zfill(4) adds zeros on the left until the string has 4 characters."),
+    ]);
+  },
+  () => {
+    const name = pick(NAMES), n = rand(50, 99), a = rand(2, 9), b = rand(2, 9);
+    return pick([
+      q(`print("{} scored {}".format("${name}", ${n}))`, `${name} scored ${n}`, ".format() fills each {} in order."),
+      q(`a = ${a}\nb = ${b}\nprint(f"{a} + {b} = {a + b}")`, `${a} + ${b} = ${a + b}`, "Each { } is replaced by the value of the code inside it."),
+      q(`name = "${name}"\nprint(f"{name.upper()}!")`, `${name.toUpperCase()}!`, "An f-string can call a method inside the braces."),
+      q(`print("%d items" % ${n})`, `${n} items`, "This is the older % style, where %d is replaced by the number."),
+    ]);
+  },
+  () => {
+    const x = decimal(2);
+    return pick([
+      q(`print(round(${x}, 1))`, pyFloat(Number(Number(x).toFixed(1))), "round(x, 1) keeps 1 decimal place."),
+      q(`print(round(${x}))`, Math.round(Number(x)), "round() with one argument gives the nearest whole number, as an int."),
+      q(`price = ${x}\nprint(f"Total: {price * 2:.2f}")`, `Total: ${(Number(x) * 2).toFixed(2)}`, "The braces can hold a calculation, and :.2f then shows it with 2 decimal places."),
+    ]);
+  },
+
+  // ---- pandas merge ----
+  () => {
+    const { setup, matched, unused } = tables();
+    const merge = (how) => setup + `merged = students.merge(courses, on="course_id"${how})\nprint(len(merged))`;
+    return pick([
+      q(merge(""), matched, "The default is an inner merge: it keeps only rows whose course_id appears in both tables."),
+      q(merge(', how="left"'), 4, "A left merge keeps every row of the left table, matched or not."),
+      q(merge(', how="right"'), matched + unused, "A right merge keeps every course. A course appears once per student in it, or once if it has none."),
+      q(merge(', how="outer"'), 4 + unused, "An outer merge keeps every row from both tables."),
+    ]);
+  },
+  () => {
+    const { setup, matched } = tables();
+    return pick([
+      q(setup + `merged = students.merge(courses, on="course_id")\nprint(merged.columns.tolist())`, ["name", "course_id", "title"],
+        "The key column appears once, followed by the other columns of the right table."),
+      q(setup + `merged = students.merge(courses, on="course_id")\nprint(merged.shape)`, `(${matched}, 3)`,
+        "An inner merge keeps the students whose course_id exists in courses, and adds the title column."),
+      q(setup + `merged = students.merge(courses, on="course_id", how="left")\nprint(merged["title"].isna().sum())`, 4 - matched,
+        "In a left merge, students whose course_id has no match get a missing title."),
+    ]);
+  },
+  () => {
+    const { names, ids, courseIds, titles, setup } = tables(), i = rand(0, 1);
+    const merged = setup + `merged = pd.merge(students, courses, on="course_id")\n`;
+    return pick([
+      q(merged + `print(merged.loc[merged["name"] == "${names[i]}", "title"].tolist())`, [titles[i]],
+        `${names[i]} has course_id ${ids[i]}, and the merge brings in the title with the same course_id.`),
+      q(merged + `print((merged["title"] == "Stats").sum())`, ids.filter((x) => x === 1).length,
+        "Stats has course_id 1, and every student with that course_id gets a row."),
+      q(merged + `print(merged["name"].tolist())`, names.filter((_, j) => courseIds.includes(ids[j])),
+        "pd.merge(a, b) is the same as a.merge(b). The inner merge drops students with no matching course."),
+    ]);
+  },
+  () => {
+    const [a1, a2, b1, b2] = nums(4, 50, 99);
+    const scores = `import pandas as pd\nmidterm = pd.DataFrame({"id": [1, 2], "score": [${a1}, ${a2}]})\nfinal = pd.DataFrame({"id": [1, 2], "score": [${b1}, ${b2}]})\nmerged = midterm.merge(final, on="id")\n`;
+    const keys = `import pandas as pd\nstudents = pd.DataFrame({"name": ["Ana", "Ben"], "course_id": [1, 2]})\ncourses = pd.DataFrame({"id": [1, 2], "title": ["Stats", "Python"]})\nmerged = students.merge(courses, left_on="course_id", right_on="id")\n`;
+    return pick([
+      q(scores + `print(merged.columns.tolist())`, ["id", "score_x", "score_y"], "A column name that exists in both tables gets _x (left table) and _y (right table)."),
+      q(scores + `print(merged.loc[0, "score_y"])`, b1, "score_y comes from the right table, which is final."),
+      q(keys + `print(merged.columns.tolist())`, ["name", "course_id", "id", "title"], "With left_on and right_on, both key columns are kept."),
+    ]);
+  },
+
+  // ---- plotting ----
+  () => {
+    const r = rand(2, 3), c = rand(2, 4), n = rand(3, 6), values = nums(8);
+    return pick([
+      q(PLT + `fig, axes = plt.subplots(${r}, ${c})\nprint(axes.shape)`, `(${r}, ${c})`, "plt.subplots(rows, columns) returns a grid of axes with that shape."),
+      q(PLT + `fig, axes = plt.subplots(1, ${c})\nprint(len(axes))`, c, "One row of plots gives one axes per column."),
+      q(PLT + `x = [1, 2, 3]\nplt.plot(x, [1, 4, 9])\nplt.plot(x, [2, 3, 5])\nprint(len(plt.gca().lines))`, 2, "Each plt.plot call adds one line to the same axes."),
+      q(PLT + `counts, edges, _ = plt.hist(${src(values)}, bins=${n})\nprint(len(edges))`, n + 1, "n bins need n + 1 edges."),
+      q(PLT + `counts, edges, _ = plt.hist(${src(values)}, bins=${n})\nprint(counts.sum())`, "8.0", "Every value falls in one bin, so the counts add up to the number of values."),
+      q(PLT + `bars = plt.bar(["Rio", "Lima", "Quito"], ${src(nums(3))})\nprint(len(bars))`, 3, "plt.bar draws one bar per category."),
+    ]);
+  },
+  () => pick([
+    fv(XY + `plt.____(x, y)  # scatter plot`, ["scatter"], "plt.scatter draws one point per (x, y) pair.", "assert len(plt.gca().collections) == 1"),
+    fv(XY + `plt.____(x, y)  # line plot`, ["plot"], "plt.plot connects the points with a line.", "assert len(plt.gca().lines) == 1"),
+    fv(PLT + `cities = ["Rio", "Lima", "Quito"]\nsales = ${src(nums(3))}\nplt.____(cities, sales)  # bar chart`, ["bar"], "plt.bar draws one bar per category.", "assert len(plt.gca().patches) == 3"),
+    fv(PLT + `values = ${src(nums(8))}\nplt.____(values, bins=5)  # histogram`, ["hist"], "plt.hist groups the values into bins and draws one bar per bin.", "assert len(plt.gca().patches) == 5"),
+  ]),
+  () => pick([
+    fv(XY + `plt.plot(x, y)\nplt.____("Sales by year")  # text above the plot`, ["title"], "plt.title sets the text above the plot.", 'assert plt.gca().get_title() == "Sales by year"'),
+    fv(XY + `plt.plot(x, y)\nplt.____("Year")  # label for the horizontal axis`, ["xlabel"], "plt.xlabel labels the horizontal axis.", 'assert plt.gca().get_xlabel() == "Year"'),
+    fv(XY + `plt.plot(x, y)\nplt.____("Sales")  # label for the vertical axis`, ["ylabel"], "plt.ylabel labels the vertical axis.", 'assert plt.gca().get_ylabel() == "Sales"'),
+    fv(XY + `plt.plot(x, y, label="2025")\nplt.____()  # show the box with the label`, ["legend"], "plt.legend shows the labels given to each plot call.", "assert plt.gca().get_legend() is not None"),
+  ]),
+  () => pick([
+    fv(XY + `fig, ax = plt.____()  # one figure with one axes\nax.plot(x, y)`, ["subplots"], "plt.subplots() creates a figure and its axes together.", "assert len(ax.lines) == 1"),
+    fv(XY + `fig, ax = plt.subplots()\nax.plot(x, y)\nax.____("Year")  # label for the horizontal axis`, ["set_xlabel"], "On an axes object the methods start with set_, so plt.xlabel becomes ax.set_xlabel.", 'assert ax.get_xlabel() == "Year"'),
+    fv(XY + `fig, ax = plt.subplots()\nax.plot(x, y)\nax.____("Sales by year")  # text above the plot`, ["set_title"], "On an axes object the methods start with set_, so plt.title becomes ax.set_title.", 'assert ax.get_title() == "Sales by year"'),
+  ]),
+  () => pick([
+    fv(XY + `plt.plot(x, y, ____="red")  # red line`, ["color", "c"], "The color argument sets the line colour. Matplotlib uses the American spelling.", 'assert plt.gca().lines[0].get_color() == "red"'),
+    fv(XY + `plt.figure(____=(8, 4))  # 8 inches wide, 4 inches tall\nplt.plot(x, y)`, ["figsize"], "figsize is (width, height) in inches.", "assert plt.gcf().get_size_inches().tolist() == [8.0, 4.0]"),
+    fv(XY + `plt.plot(x, y)\nplt.____("sales.png")  # save the figure as a file`, ["savefig"], "plt.savefig writes the current figure to a file.", 'import os\nassert os.path.exists("sales.png")'),
+    fv(`import matplotlib.pyplot as ____\n\nplt.plot([1, 2, 3], [2, 4, 5])`, ["plt"], "plt is the standard short name for matplotlib.pyplot.", "assert len(plt.gca().lines) == 1"),
+  ]),
+  () => {
+    const { setup } = frame();
+    return pick([
+      fv(setup + `df.plot(kind="____", x="city", y="sales")  # bar chart`, ["bar"], 'kind="bar" draws one bar per row.', "import matplotlib.pyplot as plt\nassert len(plt.gca().patches) == 4"),
+      fv(setup + `df["sales"].plot(kind="____", bins=4)  # histogram`, ["hist"], 'kind="hist" draws a histogram of the column.', "import matplotlib.pyplot as plt\nassert len(plt.gca().patches) == 4"),
+    ]);
   },
 ];
 
