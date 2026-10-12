@@ -35,14 +35,17 @@ Blocking a site also blocks its subdomains, so `youtube.com` covers `m.youtube.c
 
 ## Questions
 
-There are 92 question types. Each one uses random values, so questions rarely repeat exactly.
+There are 112 question types. Each one uses random values, so questions rarely repeat exactly.
 
 | Topic | Types | Examples |
 |-------|-------|----------|
 | Python basics | 31 | operators, strings, lists, loops, conditions, dictionaries |
+| Dictionaries | 7 | `.get`, `.items`, counting, nested dictionaries, comprehensions |
+| Loops | 8 | `enumerate`, `zip`, `break`, `continue`, nested loops |
 | List methods | 6 | `pop`, `insert`, `append` versus `extend`, `sort`, copies |
 | String formatting | 5 | `:.2f`, `:,`, `:.1%`, zero padding, `round` |
 | pandas | 12 | filtering, `groupby`, `sort_values`, missing values |
+| pandas groupby | 5 | `mean`, `ngroups`, `idxmax`, `agg`, `transform` |
 | pandas merge | 4 | inner, left, right and outer merges, suffixes |
 | NumPy | 9 | indexing, `axis`, boolean masks, `reshape` |
 | Reading functions | 10 | scope, missing `return`, keyword arguments, lambdas |

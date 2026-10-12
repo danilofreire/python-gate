@@ -84,6 +84,22 @@ function tables() {
   return { names, ids, courseIds, titles, setup, matched, unused };
 }
 
+// A three-person dictionary of distinct ages, plus the Python code that builds it.
+function agesDict() {
+  const values = distinct(3, 18, 60);
+  const pairs = NAMES.slice(0, 3).map((name, i) => [name, values[i]]);
+  return { pairs, code: `ages = {${pairs.map(([name, age]) => `"${name}": ${age}`).join(", ")}}\n` };
+}
+
+// Per-city sales for groupby questions. Cities are sorted, as pandas sorts groups.
+function groups(city, sales) {
+  const rows = {}, sum = {}, size = {};
+  city.forEach((c, i) => (rows[c] = rows[c] || []).push(sales[i]));
+  const cities = Object.keys(rows).sort();
+  cities.forEach((c) => { sum[c] = add(rows[c]); size[c] = rows[c].length; });
+  return { cities, rows, sum, size };
+}
+
 const frameCode = (city, sales) =>
   `import pandas as pd\ndf = pd.DataFrame({\n    "city": ${src(city)},\n    "sales": ${src(sales)},\n})\n`;
 
@@ -768,6 +784,183 @@ const GENERATORS = [
     return pick([
       fv(setup + `df.plot(kind="____", x="city", y="sales")  # bar chart`, ["bar"], 'kind="bar" draws one bar per row.', "import matplotlib.pyplot as plt\nassert len(plt.gca().patches) == 4"),
       fv(setup + `df["sales"].plot(kind="____", bins=4)  # histogram`, ["hist"], 'kind="hist" draws a histogram of the column.', "import matplotlib.pyplot as plt\nassert len(plt.gca().patches) == 4"),
+    ]);
+  },
+
+  // ---- dictionaries ----
+  () => {
+    const { pairs, code } = agesDict(), [name, age] = pick(pairs);
+    return pick([
+      q(code + `print(ages.get("${name}", 0))`, age, ".get() returns the stored value when the key exists."),
+      q(code + `print(ages.get("Eva", 0))`, 0, ".get(key, default) returns the default when the key is missing, instead of an error."),
+      q(code + `print(ages.get("Eva"))`, "None", "With no default, .get() returns None for a missing key."),
+    ]);
+  },
+  () => {
+    const { pairs, code } = agesDict(), values = pairs.map((p) => p[1]);
+    return pick([
+      q(code + `print(list(ages.keys()))`, pairs.map((p) => p[0]), ".keys() gives the keys in the order they were added."),
+      q(code + `print(sum(ages.values()))`, add(values), ".values() gives the stored values, and sum() adds them."),
+      q(code + `print(max(ages.values()))`, Math.max(...values), ".values() gives the stored values, and max() picks the largest."),
+      q(code + `print(max(ages, key=ages.get))`, pairs.find((p) => p[1] === Math.max(...values))[0],
+        "max() goes through the keys, and key=ages.get compares them by their values."),
+    ]);
+  },
+  () => {
+    const { pairs, code } = agesDict(), [name, age] = pick(pairs);
+    return pick([
+      q(code + `print("${name}" in ages)`, true, "in checks the keys of a dictionary."),
+      q(code + `print(${age} in ages)`, false, "in checks the keys, not the values."),
+      q(code + `print(${age} in ages.values())`, true, "To search the values, use .values()."),
+    ]);
+  },
+  () => {
+    const { pairs, code } = agesDict(), values = pairs.map((p) => p[1]), t = pick(values);
+    return pick([
+      q(code + `total = 0\nfor name in ages:\n    total += ages[name]\nprint(total)`, add(values), "Looping over a dictionary gives its keys, and ages[name] looks up each value."),
+      q(code + `count = 0\nfor name, age in ages.items():\n    if age > ${t}:\n        count += 1\nprint(count)`, values.filter((v) => v > t).length,
+        ".items() gives each key together with its value. > does not include equal values."),
+    ]);
+  },
+  () => {
+    const { pairs, code } = agesDict(), [name, age] = pick(pairs);
+    return pick([
+      q(code + `print(ages.pop("${name}"))`, age, ".pop(key) removes the pair and returns its value."),
+      q(code + `del ages["${name}"]\nprint(len(ages))`, 2, "del removes the whole pair."),
+      q(code + `ages["${name}"] = 99\nprint(len(ages))`, 3, "The key already exists, so its value is replaced and no pair is added."),
+    ]);
+  },
+  () => {
+    const word = pick(["banana", "pandas", "letter", "coffee", "google"]), ch = pick([...word]);
+    return q(`counts = {}\nfor ch in "${word}":\n    counts[ch] = counts.get(ch, 0) + 1\nprint(counts["${ch}"])`,
+      [...word].filter((c) => c === ch).length, "counts.get(ch, 0) starts each new letter at 0, then 1 is added every time the letter appears.");
+  },
+  () => {
+    const [a1, a2] = distinct(2, 18, 60), k = rand(3, 9), scores = nums(3, 50, 99), i = rand(0, 2);
+    return pick([
+      q(`people = {\n    "Ana": {"age": ${a1}, "city": "Rio"},\n    "Ben": {"age": ${a2}, "city": "Lima"},\n}\nprint(people["Ben"]["age"])`, a2,
+        "The first key selects the inner dictionary, and the second key selects a value inside it."),
+      q(`squares = {x: x ** 2 for x in [1, 2, ${k}]}\nprint(squares[${k}])`, k * k, "A dictionary comprehension builds key: value pairs, here each number and its square."),
+      q(`squares = {x: x ** 2 for x in range(1, 4)}\nprint(squares)`, "{1: 1, 2: 4, 3: 9}", "A dictionary comprehension builds key: value pairs, here each number and its square."),
+      q(`names = ["Ana", "Ben", "Caio"]\nscores = ${src(scores)}\ngrades = dict(zip(names, scores))\nprint(grades["${NAMES[i]}"])`, scores[i],
+        "zip pairs the two lists item by item, and dict() turns each pair into key: value."),
+      q(`data = {"scores": ${src(scores)}}\nprint(data["scores"][${i}])`, scores[i], "The key returns the list, and the index then selects one item from it."),
+    ]);
+  },
+
+  // ---- loops ----
+  () => {
+    const i = rand(0, 3), loop = (start) =>
+      `for i, name in enumerate(${src(NAMES)}${start}):\n    if name == "${NAMES[i]}":\n        print(i)`;
+    return pick([
+      q(loop(""), i, "enumerate gives each item together with its position, starting at 0."),
+      q(loop(", start=1"), i + 1, "start=1 makes enumerate count from 1 instead of 0."),
+    ]);
+  },
+  () => {
+    const xs = nums(3, 1, 6), ys = nums(3, 1, 6);
+    return q(`total = 0\nfor a, b in zip(${src(xs)}, ${src(ys)}):\n    total += a * b\nprint(total)`,
+      add(xs.map((x, i) => x * ys[i])), "zip pairs the lists item by item, so each a is multiplied by the b in the same position.");
+  },
+  () => {
+    const xs = nums(5), k = rand(8, 14);
+    const stop = xs.findIndex((x) => x > k);
+    return pick([
+      q(`total = 0\nfor x in ${src(xs)}:\n    if x > ${k}:\n        break\n    total += x\nprint(total)`, add(stop === -1 ? xs : xs.slice(0, stop)),
+        "break ends the loop at the first item above the limit, so later items are never added."),
+      q(`total = 0\nfor x in ${src(xs)}:\n    if x % 2 == 1:\n        continue\n    total += x\nprint(total)`, add(xs.filter((x) => x % 2 === 0)),
+        "continue skips the rest of the body for odd numbers, so only even numbers are added."),
+    ]);
+  },
+  () => {
+    const a = rand(2, 4), b = rand(2, 4);
+    return pick([
+      q(`count = 0\nfor i in range(${a}):\n    for j in range(${b}):\n        count += 1\nprint(count)`, a * b, "The inner loop runs in full for every pass of the outer loop."),
+      q(`count = 0\nfor i in range(${a + 1}):\n    for j in range(i):\n        count += 1\nprint(count)`, (a * (a + 1)) / 2, "The inner loop runs i times, and i goes 0, 1, 2 and so on."),
+    ]);
+  },
+  () => {
+    const xs = nums(4), k = rand(6, 14);
+    return pick([
+      q(`out = []\nfor x in ${src(xs)}:\n    out.append(x * 2)\nprint(out)`, xs.map((x) => x * 2), "Each pass appends one new value, so out ends with one item per input."),
+      q(`out = []\nfor x in ${src(xs)}:\n    if x > ${k}:\n        out.append(x)\nprint(out)`, xs.filter((x) => x > k), "Only the items that pass the test are appended."),
+      q(`xs = ${src(xs)}\nfor i in range(len(xs)):\n    xs[i] = xs[i] + 1\nprint(xs)`, xs.map((x) => x + 1), "range(len(xs)) gives every index, so each item is replaced in turn."),
+    ]);
+  },
+  () => {
+    const n = rand(3, 9), start = rand(8, 12), step = rand(2, 4);
+    let last = start;
+    for (let i = start; i > 0; i -= step) last = i;
+    return pick([
+      q(`for i in range(${n}):\n    pass\nprint(i)`, n - 1, `The loop variable keeps its last value, and range(${n}) ends at ${n - 1}.`),
+      q(`for i in range(${start}, 0, -${step}):\n    last = i\nprint(last)`, last, "A negative step counts down, and the loop stops before it reaches 0."),
+      q(`total = 0\nfor i in range(1, ${n}):\n    total += i\nprint(total)`, (n * (n - 1)) / 2, `range(1, ${n}) goes from 1 to ${n - 1}.`),
+    ]);
+  },
+  () => {
+    const xs = distinct(4), n = rand(10, 80);
+    let m = n, steps = 0;
+    while (m > 1) { m = Math.floor(m / 2); steps++; }
+    return pick([
+      q(`xs = ${src(xs)}\nbest = xs[0]\nfor x in xs:\n    if x > best:\n        best = x\nprint(best)`, Math.max(...xs), "best is replaced whenever a larger value appears, so it ends as the maximum."),
+      q(`n = ${n}\nsteps = 0\nwhile n > 1:\n    n = n // 2\n    steps += 1\nprint(steps)`, steps, "The loop halves n, dropping the decimal part, until it reaches 1, and counts the passes."),
+    ]);
+  },
+  () => {
+    const w = pick(WORDS), ws = [pick(WORDS), pick(WORDS), pick(WORDS)];
+    return pick([
+      q(`count = 0\nfor ch in "${w}":\n    if ch in "aeiou":\n        count += 1\nprint(count)`, [...w].filter((c) => "aeiou".includes(c)).length,
+        "The loop visits each character and counts the ones that are vowels."),
+      q(`s = ""\nfor w in ${src(ws)}:\n    s += w[0]\nprint(s)`, ws.map((x) => x[0]).join(""), "Each pass adds the first letter of the next word to s."),
+    ]);
+  },
+
+  // ---- pandas groupby ----
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales), c = pick(g.cities);
+    const whole = g.cities.filter((x) => Number.isInteger((g.sum[x] / g.size[x]) * 2));
+    const m = pick(whole);
+    return pick([
+      q(setup + `print(df.groupby("city")["sales"].mean()["${m}"])`, pyFloat(g.sum[m] / g.size[m]), "The mean is taken within each city. It is always a float."),
+      q(setup + `print(df.groupby("city")["sales"].count()["${c}"])`, g.size[c], ".count() counts the rows in each group."),
+      q(setup + `print(df.groupby("city")["sales"].min()["${c}"])`, Math.min(...g.rows[c]), ".min() takes the smallest sale within each city."),
+      q(setup + `print(df.groupby("city")["sales"].first()["${c}"])`, g.rows[c][0], ".first() takes the first row of each group, in the original row order."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales);
+    return pick([
+      q(setup + `print(df.groupby("city").ngroups)`, g.cities.length, "ngroups is the number of distinct values in the grouping column."),
+      q(setup + `print(len(df.groupby("city")["sales"].sum()))`, g.cities.length, "The result has one row per group, not one per original row."),
+      q(setup + `print(df.groupby("city")["sales"].sum().index.tolist())`, g.cities, "The group names become the index, sorted alphabetically."),
+      q(setup + `print(df.groupby("city")["sales"].sum().tolist())`, g.cities.map((c) => g.sum[c]), "There is one total per city, in alphabetical order of the cities."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales);
+    const totals = g.cities.map((c) => g.sum[c]), top = Math.max(...totals);
+    return pick([
+      q(setup + `print(df.groupby("city")["sales"].sum().idxmax())`, g.cities[totals.indexOf(top)], ".idxmax() returns the index label of the largest value, here the city with the highest total."),
+      q(setup + `print(df.groupby("city")["sales"].sum().max())`, top, "First the sales are added within each city, then .max() picks the largest total."),
+      q(setup + `print(df.groupby("city").size().max())`, Math.max(...g.cities.map((c) => g.size[c])), ".size() counts the rows per city, then .max() picks the largest count."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales), c = pick(g.cities);
+    return pick([
+      q(setup + `print(df.groupby("city")["sales"].agg(["min", "max"]).loc["${c}", "max"])`, Math.max(...g.rows[c]), ".agg with a list gives one column per function and one row per city."),
+      q(setup + `print(df.groupby("city")["sales"].agg(["sum", "mean"]).shape)`, `(${g.cities.length}, 2)`, ".agg with a list gives one row per city and one column per function."),
+      q(setup + `print(df.groupby("city")["sales"].sum().reset_index().columns.tolist())`, ["city", "sales"], ".reset_index() turns the group names back into an ordinary column."),
+      q(setup + `print(df.groupby("city")["sales"].sum().reset_index().shape)`, `(${g.cities.length}, 2)`, "After .reset_index() there is one row per city and two columns."),
+    ]);
+  },
+  () => {
+    const { city, sales, setup } = frame(), g = groups(city, sales);
+    return pick([
+      q(setup + `df["city_total"] = df.groupby("city")["sales"].transform("sum")\nprint(df["city_total"].tolist())`, city.map((c) => g.sum[c]),
+        ".transform() returns one value per original row: each row gets the total of its own city."),
+      q(setup + `print(df.groupby("city")["sales"].transform("count").tolist())`, city.map((c) => g.size[c]),
+        ".transform() returns one value per original row: each row gets the number of rows in its city."),
     ]);
   },
 ];
