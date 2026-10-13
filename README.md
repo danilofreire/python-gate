@@ -1,21 +1,23 @@
 # Python Gate
 
-A Chrome extension that makes you answer short Python questions before you can open distracting websites. Each correct answer earns browsing time.
+A Chrome extension that makes you answer short Python questions before you can open distracting websites. Each visit buys one short session, paid for in correct answers.
 
-The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/status/2109660673663729989), who did the same with mental maths and sudoku.
+The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/status/2109660673663729989), who did the same with mental maths and sudoku. The session rules follow [Intention](https://chromewebstore.google.com/detail/intention-stop-mindless-b/dladanhaondcgpahgiflodhckhoeohoe), which makes you commit to a time limit on each visit.
 
-![The quiz covering a blocked site, with a pandas groupby question](screenshots/quiz.png)
+![Choosing a session length on a blocked site](screenshots/chooser.png)
+
+![A pandas groupby question in the quiz](screenshots/quiz.png)
 
 ## How it works
 
-- A blocked site opens behind a full-page quiz
-- Each correct answer banks 3 minutes. You can change this number
-- After a wrong answer you get one more try, which earns no minutes. Then the quiz shows the answer with a one-line explanation
-- "Use N min" turns the bank into browsing time and starts a countdown in the bottom-right corner
-- The countdown runs only while a blocked tab is on screen, so you can spread the time over the day
-- When the countdown ends, the quiz returns on every blocked tab
-- All blocked sites share one bank
-- On a blocked site, the toolbar icon shows your minutes: banked minutes in yellow, or browsing time left in blue while the countdown runs
+- A blocked site opens behind a full-page screen that asks how long you need
+- Each length has a price in correct answers. By default 1 answer buys 3 minutes, up to 15 minutes for 5 answers
+- After a wrong answer you get one more try, which does not count. Then the quiz shows the answer with a one-line explanation
+- The session starts when you finish the questions and runs on the clock, with a countdown in the bottom-right corner
+- Leaving the site does not pause the session, and unused time is not saved
+- When the session ends, every blocked site locks for a 30-minute cooldown. No quiz is offered during it
+- All blocked sites share the same session and cooldown
+- On a blocked site, the toolbar icon shows the minutes left: blue for the session, grey for the cooldown
 
 ## Install
 
@@ -45,19 +47,23 @@ Click the Python Gate icon to open the popup. Change the settings there, then pr
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| Minutes per correct answer | 3 | Time banked by each correct answer, from 1 to 60 |
-| Daily browsing limit | none | Most minutes you can spend on blocked sites per day |
+| Minutes per correct answer | 3 | Session time bought by each correct answer, from 1 to 60 |
+| Cooldown after a session | 30 | Minutes the sites stay locked after a session. 0 means no cooldown |
+| Daily browsing limit | none | Most session minutes you can start per day |
 | Gate only during set hours | off | Hours when the gate is on. When off, the gate is always on |
 | Monday to Friday only | off | Leaves weekends open. It applies when set hours are on |
 
-The set hours can run past midnight, such as 22:00 to 06:00. Outside them, blocked sites open normally and use no banked time.
+The set hours can run past midnight, such as 22:00 to 06:00. Outside them, blocked sites open normally.
 
 Changes that tighten the gate save at once. Changes that loosen it take 5 correct answers in a row:
 
 - more minutes per answer
+- a shorter cooldown
 - a higher daily limit, or none
 - fewer gated hours
 - removing a site
+
+While a session runs, the popup shows the time left and an "End session now" button. Ending early starts the cooldown at once and returns the unused minutes to the daily limit.
 
 ## Questions
 
@@ -94,10 +100,10 @@ In the popup you choose what to practise and see how you are doing.
 - Tick one or more topics to practise only those
 - The quiz shows the topic above each question
 - The score next to a topic covers your last 20 answers in it, such as `17/20`
-- At 17 right out of 20, the topic's harder questions join in. They are worth double minutes and stay unlocked
+- At 17 right out of 20, the topic's harder questions join in. Each one counts as two answers, and they stay unlocked
 - A wrong answer makes that question type come up twice as often, up to 8 times the normal rate
 - A right answer halves the rate, down to a quarter of normal
-- The top line shows your banked minutes, today's answers and how many days in a row you have practised
+- The top line shows the session or cooldown time left, today's answers and how many days in a row you have practised
 - "Reset progress" clears the scores, the rates, the unlocked harder questions and the daily counts
 
 ## Backup
@@ -107,7 +113,7 @@ Chrome deletes an extension's data when you remove the extension. To keep your p
 - "Download backup" saves your blocked sites, settings, ticked topics and progress as a file
 - Choosing a backup file restores it
 
-A backup holds no banked minutes, so restoring one never gives time back. A restore also cannot loosen the gate:
+A backup holds no session and no record of today's usage, so restoring one never gives time back. A restore also cannot loosen the gate:
 
 - progress and ticked topics are replaced
 - sites in the file are added to your block list, and none are removed
@@ -126,7 +132,7 @@ Chrome switches extensions off in Incognito windows unless you allow them, so th
 | Script | What it checks | Needs |
 |--------|----------------|-------|
 | `tests/check_answers.py` | Runs 300 versions of every question in real Python and compares the output with the extension's answer. Also checks topic selection, progress rules and the schedule | Node, pandas, NumPy, Matplotlib |
-| `tests/smoke_test.js` | Runs the quiz and the popup against a simulated page: retry, minutes, countdown, daily limit, schedule, the 5-in-a-row rule and backups | Node |
+| `tests/smoke_test.js` | Runs the quiz and the popup against a simulated page: choosing a session, retry, countdown, cooldown, daily limit, schedule, the toolbar badge, the 5-in-a-row rule and backups | Node |
 
 ```bash
 python3 tests/check_answers.py
@@ -145,7 +151,7 @@ To add questions, edit the `BANK` list in `questions.js` and run both scripts ag
 | `manifest.json` | Extension settings |
 | `sites.js` | Stored settings, default block list, schedule, streak and backup rules |
 | `questions.js` | Question generators, answer checking and progress rules |
-| `content.js` | Quiz screen, time bank and countdown |
+| `content.js` | Session chooser, quiz, countdown and cooldown |
 | `popup.html`, `popup.js` | Toolbar popup: block list, settings, topics and progress |
 | `background.js` | Minutes shown on the toolbar icon |
 | `backup.html`, `backup.js` | Backup and restore page |

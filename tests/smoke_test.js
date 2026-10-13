@@ -1,7 +1,7 @@
 // Runs the quiz (content.js) and the popup (popup.js) against a fake page and a
-// fake chrome.storage, and checks the behaviour end to end: retry, minutes,
-// countdown, daily limit, schedule, harder questions, the 5-in-a-row challenge
-// and backups. Needs only Node. Run from anywhere: node tests/smoke_test.js
+// fake chrome.storage, and checks the behaviour end to end: choosing a session,
+// retry, countdown, cooldown, daily limit, schedule, harder questions, the
+// toolbar badge, the 5-in-a-row challenge and backups. Needs only Node. Run from anywhere: node tests/smoke_test.js
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
 const ext = path.resolve(__dirname, "..");
 const read = (f) => fs.readFileSync(`${ext}/${f}`, "utf8");
@@ -69,67 +69,107 @@ const settle = () => new Promise((r) => setImmediate(r));
   const store = { minutes: 3 };
   const env = makeEnv(store);
   load(env, ["sites.js", "questions.js", "content.js"]);
+  // remember the last question asked, so the test can answer it correctly
+  vm.runInContext("const __orig = makeQuestion; var __q; makeQuestion = (...a) => (__q = __orig(...a));", env);
   await settle();
   const find = (tag, cls) => env.created.filter((e) => e.tag === tag && (!cls || e.className === cls));
   const overlay = find("div", "overlay")[0], pill = find("div", "pill")[0];
-  const form = find("form")[0], input = find("input")[0], feedback = find("p", "feedback")[0] || env.created.find((e) => e.tag === "p" && e.className.startsWith("feedback"));
-  const spend = find("button", "spend")[0], code = find("pre")[0];
-  const fb = () => env.created.find((e) => e.tag === "p" && e.className.startsWith("feedback"));
-  assert(overlay && !overlay.hidden && pill.hidden, "locked at start");
-  assert(code.textContent.length > 0, "question shown");
+  const [, chooseView, quizView, messageView] = find("div", "card")[0].children;
+  const choiceButtons = find("div", "choices")[0].children;
+  const form = find("form")[0], input = find("input")[0], submit = form.children[1];
+  const progress = find("div", "footer")[0].children[0], back = find("button", "back")[0];
   const topicLine = find("p", "topic")[0];
-  assert(require(`${ext}/questions.js`).TOPICS.includes(topicLine.textContent), "topic shown: " + topicLine.textContent);
+  const fb = () => env.created.find((e) => e.tag === "p" && e.className.startsWith("feedback"));
+  const asked = () => vm.runInContext("__q", env);
+  const answer = (right) => { input.value = right ? asked().accept[0] : "definitely wrong"; form.fire("submit"); };
+  const tick = (seconds) => { for (let i = 0; i < seconds; i++) env.advance(1000); };
 
-  // answer correctly using the question's own accepted answer
-  const current = () => vm.runInContext("typeof __q === 'undefined' ? null : __q", env);
-  // expose makeQuestion results by wrapping it
-  vm.runInContext("const __orig = makeQuestion; var __q; makeQuestion = (...a) => (__q = __orig(...a));", env);
+  // a visit starts with the choice of a session length
+  assert(!overlay.hidden && pill.hidden, "locked at start");
+  assert(!chooseView.hidden && quizView.hidden && messageView.hidden, "chooser shown first");
+  assert.deepEqual(choiceButtons.map((b) => b.textContent),
+    ["3 min for 1 answer", "6 min for 2 answers", "9 min for 3 answers", "12 min for 4 answers", "15 min for 5 answers"]);
+
+  // choosing 6 minutes asks for 2 correct answers
+  choiceButtons[1].fire("click");
+  assert(chooseView.hidden && !quizView.hidden, "quiz shown after choosing");
+  assert(require(`${ext}/questions.js`).TOPICS.includes(topicLine.textContent), "topic shown: " + topicLine.textContent);
+  assert.equal(progress.textContent, "0 of 2 correct");
   form.fire("submit"); // empty input: ignored
-  // force a fresh question through the wrapper: answer wrong twice, then next
-  input.value = "definitely wrong"; form.fire("submit");
+
+  // a miss gives one retry, then the answer; neither counts
+  answer(false);
   assert(/Try once more/.test(fb().textContent), "retry offered: " + fb().textContent);
-  assert.equal(store.bank || 0, 0);
-  input.value = "still wrong"; form.fire("submit");
+  answer(false);
   assert(/Not quite, /.test(fb().textContent), "answer revealed");
-  form.fire("submit"); // next question (now tracked in __q)
-  let q = vm.runInContext("__q", env);
-  input.value = q.accept[0]; form.fire("submit");
-  assert(/Correct, \+3 min/.test(fb().textContent), fb().textContent);
-  assert.equal(store.bank, 3);
+  assert.equal(progress.textContent, "0 of 2 correct");
+  form.fire("submit"); // next question
+
+  answer(true);
+  assert(/^Correct\. /.test(fb().textContent), fb().textContent);
+  assert.equal(progress.textContent, "1 of 2 correct");
+  assert.equal(submit.textContent, "Next question");
   const today = Object.keys(store.stats.days)[0];
   assert.deepEqual(store.stats.days[today], [1, 2]);
 
-  // retry that succeeds earns nothing
-  form.fire("submit"); q = vm.runInContext("__q", env);
-  input.value = "nope"; form.fire("submit");
-  input.value = q.accept[0]; form.fire("submit");
-  assert(/second try earns no minutes/.test(fb().textContent));
-  assert.equal(store.bank, 3);
+  // a retry that succeeds does not count
+  form.fire("submit");
+  answer(false); answer(true);
+  assert(/second try does not count/.test(fb().textContent));
+  assert.equal(progress.textContent, "1 of 2 correct");
 
-  // spend the bank: overlay goes, time counts down only while visible
-  spend.fire("click");
-  assert(overlay.hidden && !pill.hidden, "unlocked after spending");
-  assert.equal(store.sessionLeft, 180000);
-  for (let i = 0; i < 10; i++) env.advance(1000);
-  assert(store.sessionLeft <= 171000 && store.sessionLeft >= 170000, "10s charged: " + store.sessionLeft);
+  // the last answer offers the session, and nothing is unlocked before that
+  form.fire("submit");
+  answer(true);
+  assert.equal(submit.textContent, "Start 6 min session");
+  assert(!store.sessionEnd && !overlay.hidden, "not unlocked yet");
+  form.fire("submit");
+  assert(overlay.hidden && !pill.hidden, "unlocked");
+  assert.equal(pill.textContent, "6:00");
+
+  // the session runs on the clock, whether or not the tab is on screen
+  tick(10);
+  assert.equal(pill.textContent, "5:50");
   env.document.visibilityState = "hidden";
-  for (let i = 0; i < 60; i++) env.advance(1000);
-  assert(store.sessionLeft >= 170000, "hidden tab not charged");
+  tick(60);
   env.document.visibilityState = "visible";
-  for (let i = 0; i < 5; i++) env.advance(1000);
-  assert(store.sessionLeft >= 165000 && store.sessionLeft <= 167000, "resumed: " + store.sessionLeft);
-  assert(/^2:4\d$/.test(pill.textContent), "pill: " + pill.textContent);
-  for (let i = 0; i < 200; i++) env.advance(1000);
-  assert.equal(store.sessionLeft, 0);
-  assert(!overlay.hidden && pill.hidden, "locked again when time runs out");
+  tick(1);
+  assert.equal(pill.textContent, "4:49", "hidden time still counts");
 
-  // daily limit: 1 minute cap already exceeded today -> cannot spend
-  await env.chrome.storage.local.set({ dailyCap: 1, bank: 6 });
-  env.advance(1000);
-  assert(spend.disabled && /Daily limit/.test(spend.textContent), "cap reached: " + spend.textContent);
+  // when it ends, the sites lock for the cooldown and no quiz is offered
+  tick(289);
+  assert(!overlay.hidden && pill.hidden, "locked when the session ends");
+  assert(!messageView.hidden && chooseView.hidden && quizView.hidden, "cooldown message only");
+  assert(/^You can start another one in (30:00|29:5\d)\.$/.test(messageView.children[1].textContent), messageView.children[1].textContent);
+  tick(900);
+  assert(!messageView.hidden, "still waiting after 15 minutes");
+  tick(901);
+  assert(messageView.hidden && !chooseView.hidden, "chooser returns after the cooldown");
+
+  // "Choose another length" drops the progress
+  choiceButtons[0].fire("click");
+  assert(!quizView.hidden);
+  back.fire("click");
+  assert(!chooseView.hidden && quizView.hidden);
+
+  // daily limit: the 6 minutes above count, and lengths that do not fit are disabled
+  await env.chrome.storage.local.set({ dailyCap: 7 });
+  assert(!messageView.hidden && /Daily limit reached/.test(messageView.children[0].textContent), "1 minute left is too little");
+  await env.chrome.storage.local.set({ dailyCap: 10 });
+  assert(!chooseView.hidden && !choiceButtons[0].disabled && choiceButtons[1].disabled, "only 3 minutes fit in the 4 left");
   await env.chrome.storage.local.set({ dailyCap: 0 });
-  env.advance(1000);
-  assert(!spend.disabled && spend.textContent === "Use 6 min");
+  assert(!choiceButtons[4].disabled);
+
+  // with no cooldown, the chooser returns as soon as a session ends
+  await env.chrome.storage.local.set({ cooldown: 0 });
+  choiceButtons[0].fire("click");
+  while (submit.textContent !== "Start 3 min session") { answer(true); if (submit.textContent === "Next question") form.fire("submit"); }
+  form.fire("submit");
+  assert(overlay.hidden);
+  tick(181);
+  assert(!overlay.hidden && !chooseView.hidden && messageView.hidden, "no wait when cooldown is 0");
+  await env.chrome.storage.local.set({ cooldown: 30 });
+  tick(1800);
 
   // schedule: a window that excludes the current time opens the site
   const now = new env.Date(), h = now.getHours();
@@ -141,19 +181,22 @@ const settle = () => new Promise((r) => setImmediate(r));
   env.advance(1000);
   assert(!overlay.hidden, "inside schedule: gated");
 
-  // harder question pays double
-  await env.chrome.storage.local.set({ bank: 0, stats: { ...store.stats, harder: ["NumPy"] }, onlyTopics: ["NumPy"] });
-  let paidDouble = false;
-  for (let i = 0; i < 200 && !paidDouble; i++) {
-    form.fire("submit"); // next
-    q = vm.runInContext("__q", env);
-    const before = store.bank;
-    input.value = q.accept[0]; form.fire("submit");
-    assert.equal(store.bank - before, q.level === 2 ? 6 : 3);
-    paidDouble = q.level === 2;
+  // a harder question counts as two answers
+  await env.chrome.storage.local.set({ stats: { ...store.stats, harder: ["NumPy"] }, onlyTopics: ["NumPy"] });
+  const count = () => Number(progress.textContent.split(" ")[0]);
+  choiceButtons[4].fire("click");
+  let sawHarder = false;
+  for (let i = 0; i < 400 && !sawHarder; i++) {
+    const before = count();
+    if (before >= 3) { back.fire("click"); choiceButtons[4].fire("click"); continue; }
+    const level = asked().level;
+    answer(true);
+    assert.equal(count() - before, level);
+    sawHarder = level === 2;
+    if (!sawHarder) form.fire("submit");
   }
-  assert(paidDouble, "saw a harder question");
-  assert.equal(topicLine.textContent, "NumPy · harder, double minutes");
+  assert(sawHarder, "saw a harder question");
+  assert.equal(topicLine.textContent, "NumPy · harder, counts double");
 
   // a site not on the list is left alone
   const env2 = makeEnv({});
@@ -169,16 +212,22 @@ const settle = () => new Promise((r) => setImmediate(r));
   await settle();
   const $ = (id) => penv.byId[id];
   assert.equal($("block").textContent, "Block example.org");
-  assert(/Banked: 0 min · today: 0 of 0 right · streak: 0 days · used: 0 of 30 min/.test($("summary").textContent), $("summary").textContent);
+  assert.equal($("summary").textContent, "No session running · today: 0 of 0 right · streak: 0 days · used: 0 of 30 min");
+  assert($("end").hidden, "nothing to end");
   assert.equal($("topics").children.length, 12);
   const lists = $("topics").children.find((li) => li.children[0].children[1] === "Lists");
   assert.equal(lists.children[1].textContent, "3/4 · harder on");
 
-  // a running countdown shows in the summary and follows storage changes
-  await penv.chrome.storage.local.set({ sessionLeft: 155000 });
-  assert(/Banked: 0 min · browsing left: 2:35 · today/.test($("summary").textContent), $("summary").textContent);
-  await penv.chrome.storage.local.set({ sessionLeft: 0 });
-  assert(!/browsing left/.test($("summary").textContent));
+  // a running session shows in the summary, and can be ended early
+  const pnow = vm.runInContext("Date.now()", penv);
+  await penv.chrome.storage.local.set({ sessionEnd: pnow + 155000, used: { day: vm.runInContext("dayKey()", penv), ms: 360000 } });
+  assert(/^Session: 2:35 left · today/.test($("summary").textContent), $("summary").textContent);
+  assert(!$("end").hidden);
+  $("end").fire("click"); await settle();
+  assert.equal(pstore.sessionEnd, pnow, "session ended now");
+  assert.equal(pstore.used.ms, 360000 - 155000, "unused time returned to the daily limit");
+  assert(/^Next session in 30:00 · today/.test($("summary").textContent), $("summary").textContent);
+  assert($("end").hidden);
 
   // tightening settings saves at once
   $("minutes").value = "2"; $("cap").value = "20";
@@ -196,17 +245,17 @@ const settle = () => new Promise((r) => setImmediate(r));
   $2("save").fire("click"); await settle();
   assert($2("main").hidden && !$2("challenge").hidden, "challenge shown");
   assert.equal(pstore.minutes, 2, "not saved yet");
-  const answer = (right) => { $2("challenge-input").value = right ? p2.__q.accept[0] : "wrong!"; $2("challenge-form").fire("submit"); };
+  const reply = (right) => { $2("challenge-input").value = right ? p2.__q.accept[0] : "wrong!"; $2("challenge-form").fire("submit"); };
   $2("challenge-form").fire("submit"); // empty: ignored
   // first question was asked before the wrapper existed; miss it to move on
-  answer(false); assert(/0 of 5/.test($2("challenge-progress").textContent));
+  reply(false); assert(/0 of 5/.test($2("challenge-progress").textContent));
   $2("challenge-form").fire("submit"); // next question
-  answer(true); answer(true); answer(true); answer(false);
+  reply(true); reply(true); reply(true); reply(false);
   assert(/0 of 5/.test($2("challenge-progress").textContent));
   $2("challenge-form").fire("submit");
-  for (let i = 0; i < 4; i++) answer(true);
+  for (let i = 0; i < 4; i++) reply(true);
   assert.equal(pstore.minutes, 2, "4 in a row is not enough");
-  answer(true); await settle();
+  reply(true); await settle();
   assert.equal(pstore.minutes, 10, "saved after 5 in a row");
 
   // removing a site also needs the challenge
@@ -224,21 +273,25 @@ const settle = () => new Promise((r) => setImmediate(r));
 
   // ---------- backup rules (sites.js) ----------
   const { DEFAULTS, makeBackup, restoreBackup } = require(`${ext}/sites.js`);
-  const mine = { ...DEFAULTS, sites: ["x.com"], minutes: 3, bank: 40, sessionLeft: 9000, dailyCap: 30 };
+  const mine = { ...DEFAULTS, sites: ["x.com"], minutes: 3, sessionEnd: 9000, dailyCap: 30 };
   const file = makeBackup({ ...mine, sites: ["x.com", "news.com"], stats: { ...DEFAULTS.stats, harder: ["Lists"] } });
-  assert(!("bank" in file) && !("sessionLeft" in file), "a backup holds no minutes");
+  assert(!("sessionEnd" in file) && !("used" in file), "a backup holds no session or usage");
 
   // same settings: everything is restored, and sites are merged
   let restored = restoreBackup({ ...mine, sites: ["x.com", "extra.com"] }, file);
   assert(restored.keptSettings);
   assert.deepEqual(restored.patch.sites, ["x.com", "extra.com", "news.com"]);
   assert.deepEqual(restored.patch.stats.harder, ["Lists"]);
-  assert(!("bank" in restored.patch));
+  assert(!("sessionEnd" in restored.patch) && !("used" in restored.patch));
 
   // looser settings in the file are not applied, but progress still is
   restored = restoreBackup(mine, { ...file, minutes: 20, dailyCap: 0 });
   assert(!restored.keptSettings && !("minutes" in restored.patch) && !("dailyCap" in restored.patch));
   assert.deepEqual(restored.patch.stats.harder, ["Lists"]);
+
+  // a shorter cooldown is looser too
+  assert(!restoreBackup(mine, { ...file, cooldown: 5 }).keptSettings);
+  assert(restoreBackup(mine, { ...file, cooldown: 60 }).patch.cooldown === 60);
 
   // tighter settings are applied; junk values fall back to the current ones
   restored = restoreBackup(mine, { ...file, minutes: 2, dailyCap: "lots", schedule: { on: true, from: "25:99", to: "18:00" } });
@@ -251,10 +304,10 @@ const settle = () => new Promise((r) => setImmediate(r));
 
   // ---------- toolbar badge (background.js) ----------
   // the quiz reported the right badge at each stage (see env.badges)
-  const texts = env.badges.map((m) => `${m.badge}${m.running ? "b" : "y"}`);
-  assert.equal(texts[0], "y", "nothing banked at first: no badge");
-  assert(texts.includes("3y"), "banked minutes in yellow");
-  assert(texts.includes("3b") && texts.includes("1b"), "minutes left in blue, counting down");
+  const texts = env.badges.map((m) => `${m.badge}:${m.kind}`);
+  assert.equal(texts[0], ":", "no badge before a session");
+  assert(texts.includes("6:session") && texts.includes("1:session"), "session minutes, counting down");
+  assert(texts.includes("30:wait") && texts.includes("1:wait"), "cooldown minutes, counting down");
   assert.equal(env2.badges.length, 0, "unlisted sites never set a badge");
 
   // the background script applies a report to the sending tab only
@@ -269,9 +322,9 @@ const settle = () => new Promise((r) => setImmediate(r));
     },
   } });
   vm.runInContext(read("background.js"), benv);
-  onMessage({ badge: "6", running: false }, { tab: { id: 7 } });
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ tabId: 7, text: "6" }, { tabId: 7, color: "#ffd43b" }]);
-  onMessage({ badge: "2", running: true }, {}); // not from a tab: ignored
+  onMessage({ badge: "6", kind: "session" }, { tab: { id: 7 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ tabId: 7, text: "6" }, { tabId: 7, color: "#4b8bbe" }]);
+  onMessage({ badge: "2", kind: "wait" }, {}); // not from a tab: ignored
   assert.equal(calls.length, 2);
 
   console.log("smoke test passed");

@@ -15,6 +15,7 @@
     .muted, .score, .hint { color: #9aa0a6; font-size: 12px; }
     .hint { margin: 0 0 6px; }
     #summary { margin: 2px 0 12px; }
+    #end { margin: -6px 0 12px; }
     button { border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
     button:disabled { opacity: 0.5; cursor: default; }
     .primary { padding: 8px; background: #4b8bbe; color: #fff; font-weight: 600; }
@@ -45,19 +46,21 @@
   <div id="main">
     <h1>Python Gate</h1>
     <p id="summary" class="muted"></p>
+    <button id="end" class="small" hidden>End session now</button>
     <button id="block" class="primary"></button>
 
     <h2>Settings</h2>
     <div class="row"><label for="minutes">Minutes per correct answer</label><input id="minutes" type="number" min="1" max="60"></div>
+    <div class="row"><label for="cooldown">Cooldown after a session, in minutes</label><input id="cooldown" type="number" min="0" max="240"></div>
     <div class="row"><label for="cap">Daily browsing limit in minutes (0 = none)</label><input id="cap" type="number" min="0" max="600"></div>
     <div class="row"><label><input id="schedule-on" type="checkbox"> Gate only during set hours</label></div>
     <div class="row"><span class="hours">From <input id="from" type="time"> to <input id="to" type="time"></span></div>
     <div class="row"><label><input id="weekdays" type="checkbox"> Monday to Friday only</label></div>
     <button id="save" class="small">Save settings</button>
-    <p class="hint">Loosening the gate (more minutes, a higher limit, fewer gated hours, removing a site) takes 5 correct answers in a row.</p>
+    <p class="hint">Loosening the gate (more minutes, a shorter cooldown, a higher limit, fewer gated hours, removing a site) takes 5 correct answers in a row.</p>
 
     <h2>Topics</h2>
-    <p class="hint">Tick topics to practise only those. With none ticked, questions come from all topics. Scores cover your last 20 answers per topic. At 17 right, harder questions join in, worth double minutes.</p>
+    <p class="hint">Tick topics to practise only those. With none ticked, questions come from all topics. Scores cover your last 20 answers per topic. At 17 right, harder questions join in, and each counts as two answers.</p>
     <ul id="topics"></ul>
     <button id="reset" class="small">Reset progress</button>
 

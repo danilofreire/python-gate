@@ -1,6 +1,6 @@
-// Covers blocked sites with a Python quiz until you have earned browsing time.
-// Each correct answer banks minutes; "Use minutes" turns the bank into a
-// session that counts down only while a blocked tab is on screen.
+// Covers blocked sites with a Python quiz. On each visit you choose a session
+// length, answer the questions it costs, and get exactly that session. The
+// session runs on the clock, unused time is lost, and a cooldown follows it.
 
 const CSS = `
   [hidden] { display: none !important; }
@@ -37,7 +37,11 @@ const CSS = `
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 20px; padding-top: 16px; border-top: 1px solid #2a2e35;
   }
-  .spend { background: #ffd43b; color: #14161a; }
+  .big { margin: 20px 0 4px; font-size: 18px; font-weight: 600; }
+  .note { margin: 0; color: #9aa0a6; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+  .choices button { flex: 1; white-space: nowrap; }
+  .back { background: #2a2e35; color: #9aa0a6; font-weight: 400; }
   .pill {
     position: fixed; right: 12px; bottom: 12px; z-index: 2147483647;
     padding: 4px 10px; border-radius: 999px; pointer-events: none;
@@ -57,9 +61,35 @@ function start(saved) {
   const host = el("div");
   const shadow = host.attachShadow({ mode: "closed" });
   const style = el("style", "", CSS);
-
   const overlay = el("div", "overlay");
   const card = el("div", "card");
+  const pill = el("div", "pill");
+
+  let state = saved;
+  let question = null;
+  let phase = "ask"; // "ask" (first try), "retry" (second try) or "done"
+  let goal = 0;      // correct answers needed for the chosen session; 0 means not chosen yet
+  let done = 0;      // correct answers so far
+
+  // ---- view 1: choose a session length, priced in correct answers ----
+  const chooseView = el("div");
+  const chooseNote = el("p", "note");
+  const choices = el("div", "choices");
+  const choiceButtons = [1, 2, 3, 4, 5].map((count) => {
+    const button = el("button");
+    button.type = "button";
+    button.addEventListener("click", () => {
+      [goal, done] = [count, 0];
+      nextQuestion();
+      render();
+    });
+    choices.append(button);
+    return button;
+  });
+  chooseView.append(el("p", "big", "How long do you need?"), choices, chooseNote);
+
+  // ---- view 2: the quiz ----
+  const quizView = el("div");
   const rule = el("p", "rule");
   const topicLine = el("p", "topic");
   const prompt = el("p", "prompt");
@@ -69,35 +99,41 @@ function start(saved) {
   const submit = el("button", "", "Check");
   const feedback = el("p", "feedback");
   const footer = el("div", "footer");
-  const bankLabel = el("span");
-  const spend = el("button", "spend");
-  const pill = el("div", "pill");
+  const progress = el("span");
+  const back = el("button", "back", "Choose another length");
 
   input.placeholder = "Your answer";
   input.autocomplete = "off";
   input.spellcheck = false;
-  spend.type = "button";
-  overlay.hidden = pill.hidden = true;
-
+  back.type = "button";
   form.append(input, submit);
-  footer.append(bankLabel, spend);
-  card.append(el("h1", "", "Earn your browsing time"), rule, topicLine, prompt, code, form, feedback, footer);
+  footer.append(progress, back);
+  quizView.append(rule, topicLine, prompt, code, form, feedback, footer);
+
+  // ---- view 3: a message while the sites are locked (cooldown or daily limit) ----
+  const messageView = el("div");
+  const messageTitle = el("p", "big");
+  const messageText = el("p", "note");
+  messageView.append(messageTitle, messageText);
+
+  overlay.hidden = pill.hidden = true;
+  card.append(el("h1", "", "Earn your browsing time"), chooseView, quizView, messageView);
   overlay.append(card);
   shadow.append(style, overlay, pill);
   document.documentElement.append(host);
 
-  let state = saved;
-  let question = null;
-  let phase = "ask"; // "ask" (first try), "retry" (second try) or "done"
+  const clock = (ms) => {
+    const s = Math.ceil(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
 
-  // Harder questions are worth double.
-  const reward = () => state.minutes * question.level;
+  // Time left in the running session, and in the cooldown that follows it (ms).
+  const sessionLeft = () => state.sessionEnd - Date.now();
+  const waitLeft = () => state.sessionEnd + state.cooldown * 60000 - Date.now();
 
   // Browsing time still allowed today, in ms. No daily limit means no ceiling.
   const capLeft = () =>
     state.dailyCap ? Math.max(0, state.dailyCap * 60000 - usedToday(state.used)) : Infinity;
-
-  const browsing = () => state.sessionLeft > 0 && capLeft() > 0;
 
   // Saves a change and applies it here at once, without waiting for storage to echo it back.
   const save = (patch) => {
@@ -108,7 +144,7 @@ function start(saved) {
   function nextQuestion() {
     question = makeQuestion(state.onlyTopics, state.stats.weights, state.stats.harder);
     phase = "ask";
-    topicLine.textContent = question.topic + (question.level === 2 ? " · harder, double minutes" : "");
+    topicLine.textContent = question.topic + (question.level === 2 ? " · harder, counts double" : "");
     prompt.textContent = promptFor(question);
     code.textContent = question.code;
     input.value = "";
@@ -121,35 +157,34 @@ function start(saved) {
   function finish(className, text) {
     phase = "done";
     input.readOnly = true;
-    submit.textContent = "Next question";
+    submit.textContent = done >= goal ? `Start ${goal * state.minutes} min session` : "Next question";
     feedback.className = "feedback " + className;
     feedback.textContent = text;
+    render();
   }
 
-  // Runs every second. The session only counts down while this tab is on
-  // screen. A gap of more than 2 seconds since the last count means no blocked
-  // tab was being watched, so that time is not charged.
-  function tick() {
-    if (!gatedNow(state.schedule) || !browsing() || document.visibilityState !== "visible") return;
-    const now = Date.now(), gap = now - state.tickAt;
-    const spent = gap > 0 && gap < 2000 ? gap : 0;
+  // The session starts now and runs on the clock. Its full length counts
+  // towards the daily limit.
+  function startSession() {
+    const length = goal * state.minutes * 60000;
+    [goal, done, question] = [0, 0, null];
     save({
-      sessionLeft: Math.max(0, state.sessionLeft - spent),
-      tickAt: now,
-      used: { day: dayKey(), ms: usedToday(state.used) + spent },
+      sessionEnd: Date.now() + length,
+      used: { day: dayKey(), ms: usedToday(state.used) + length },
     });
+    render();
   }
 
   // Tells the background script what the toolbar icon should show on this tab:
-  // minutes left while browsing, banked minutes otherwise, nothing when zero
-  // or outside the scheduled hours. Sent when it changes, and repeated every
-  // 3 seconds while the tab is on screen in case Chrome dropped the badge.
+  // minutes left in the session, or minutes of cooldown left. Sent when it
+  // changes, and repeated every 3 seconds in case Chrome dropped the badge.
   let lastBadge = null, lastBadgeAt = 0;
   function showBadge() {
     if (document.visibilityState !== "visible") return;
-    const gated = gatedNow(state.schedule), running = gated && browsing();
-    const minutes = !gated ? 0 : running ? Math.ceil(Math.min(state.sessionLeft, capLeft()) / 60000) : state.bank;
-    const message = { badge: minutes ? String(minutes) : "", running };
+    const gated = gatedNow(state.schedule);
+    const kind = !gated ? "" : sessionLeft() > 0 ? "session" : waitLeft() > 0 ? "wait" : "";
+    const left = kind === "session" ? sessionLeft() : waitLeft();
+    const message = { badge: kind ? String(Math.ceil(left / 60000)) : "", kind };
     if (JSON.stringify(message) === lastBadge && Date.now() - lastBadgeAt < 3000) return;
     [lastBadge, lastBadgeAt] = [JSON.stringify(message), Date.now()];
     chrome.runtime.sendMessage(message).catch(() => {}); // fails harmlessly while the extension reloads
@@ -160,47 +195,62 @@ function start(saved) {
     // Outside the scheduled hours the site is simply open.
     if (!gatedNow(state.schedule)) return (overlay.hidden = pill.hidden = true);
 
-    overlay.hidden = browsing();
-    pill.hidden = !browsing();
+    const inSession = sessionLeft() > 0;
+    overlay.hidden = inSession;
+    pill.hidden = !inSession;
+    if (inSession) return (pill.textContent = clock(sessionLeft()));
 
-    if (browsing()) {
-      question = null;
-      const s = Math.ceil(Math.min(state.sessionLeft, capLeft()) / 1000);
-      pill.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    // Otherwise a YouTube video keeps playing behind the quiz.
+    document.querySelectorAll("video").forEach((video) => video.pause());
+
+    const waiting = waitLeft() > 0;
+    const capped = capLeft() < state.minutes * 60000; // cannot afford even the shortest session
+    messageView.hidden = !(waiting || capped);
+    chooseView.hidden = waiting || capped || goal > 0;
+    quizView.hidden = waiting || capped || goal === 0;
+
+    if (waiting) {
+      messageTitle.textContent = "Session over";
+      messageText.textContent = `You can start another one in ${clock(waitLeft())}.`;
+    } else if (capped) {
+      messageTitle.textContent = "Daily limit reached";
+      messageText.textContent = `You have used today's ${state.dailyCap} minutes. Blocked sites open again tomorrow.`;
+    } else if (goal === 0) {
+      choiceButtons.forEach((button, i) => {
+        const count = i + 1, minutes = count * state.minutes;
+        button.textContent = `${minutes} min for ${count} ${count === 1 ? "answer" : "answers"}`;
+        button.disabled = minutes * 60000 > capLeft();
+      });
+      chooseNote.textContent = "The session starts when you finish the questions and runs on the clock. Unused time is not saved."
+        + (state.cooldown ? ` Afterwards the sites stay locked for ${state.cooldown} min.` : "");
     } else {
-      // Otherwise a YouTube video keeps playing behind the quiz.
-      document.querySelectorAll("video").forEach((video) => video.pause());
-      const capped = capLeft() === 0;
-      rule.textContent = `Each correct answer banks ${state.minutes} min.`;
-      bankLabel.textContent = `Banked: ${state.bank} min`;
-      spend.textContent = capped ? "Daily limit reached" : `Use ${state.bank} min`;
-      spend.disabled = capped || state.bank === 0;
-      if (!question) nextQuestion();
+      rule.textContent = `${goal * state.minutes} min session`;
+      progress.textContent = `${Math.min(done, goal)} of ${goal} correct`;
     }
   }
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (phase === "done") return nextQuestion();
+    if (phase === "done") return done >= goal ? startSession() : nextQuestion();
     if (!input.value.trim()) return;
 
     const correct = isCorrect(input.value, question.accept);
     const reveal = `Not quite, ${answerLabel(question)}: ${question.answer}\n${question.why}`;
 
     if (phase === "retry") {
-      return correct ? finish("ok", `Right this time, but a second try earns no minutes. ${question.why}`) : finish("bad", reveal);
+      return correct ? finish("ok", `Right this time, but a second try does not count. ${question.why}`) : finish("bad", reveal);
     }
 
-    // Only the first try counts for progress and minutes.
+    // Only the first try counts, for progress and towards the session.
     const stats = recordAnswer(state.stats, question, correct, dayKey());
     const unlocked = stats.harder.length > state.stats.harder.length
       ? `\nHarder ${question.topic} questions are now unlocked.` : "";
+    save({ stats });
 
     if (correct) {
-      finish("ok", `Correct, +${reward()} min. ${question.why}${unlocked}`);
-      save({ stats, bank: state.bank + reward() });
+      done += question.level; // a harder question counts as two answers
+      finish("ok", `Correct. ${question.why}${unlocked}`);
     } else {
-      save({ stats });
       phase = "retry";
       feedback.className = "feedback bad";
       feedback.textContent = "Not quite. Try once more before you see the answer.";
@@ -208,8 +258,8 @@ function start(saved) {
     }
   });
 
-  spend.addEventListener("click", () => {
-    save({ bank: 0, sessionLeft: state.sessionLeft + state.bank * 60000, tickAt: Date.now() });
+  back.addEventListener("click", () => {
+    [goal, done, question] = [0, 0, null];
     render();
   });
 
@@ -228,10 +278,7 @@ function start(saved) {
 
   document.addEventListener("visibilitychange", render); // refresh as soon as the tab comes back
   render();
-  setInterval(() => {
-    tick();
-    render();
-  }, 1000);
+  setInterval(render, 1000);
 }
 
 // The script loads on every page but only acts on sites in the block list.

@@ -52,12 +52,13 @@ function challenge(what, apply) {
 function showSummary() {
   const [right, total] = state.stats.days[dayKey()] || [0, 0];
   const days = streak(state.stats.days);
-  const left = Math.ceil(state.sessionLeft / 1000);
-  const parts = [`Banked: ${state.bank} min`];
-  if (left > 0) parts.push(`browsing left: ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`);
+  const session = state.sessionEnd - Date.now(), wait = session + state.cooldown * 60000;
+  const clock = (ms) => `${Math.floor(Math.ceil(ms / 1000) / 60)}:${String(Math.ceil(ms / 1000) % 60).padStart(2, "0")}`;
+  const parts = [session > 0 ? `Session: ${clock(session)} left` : wait > 0 ? `Next session in ${clock(wait)}` : "No session running"];
   parts.push(`today: ${right} of ${total} right`, `streak: ${days} ${days === 1 ? "day" : "days"}`);
   if (state.dailyCap) parts.push(`used: ${Math.floor(usedToday(state.used) / 60000)} of ${state.dailyCap} min`);
   $("summary").textContent = parts.join(" · ");
+  $("end").hidden = session <= 0;
 }
 
 async function main() {
@@ -70,6 +71,16 @@ async function main() {
   chrome.storage.onChanged.addListener((changes) => {
     for (const key in changes) state[key] = changes[key].newValue;
     showSummary();
+  });
+  setInterval(showSummary, 1000);
+
+  // Ending early starts the cooldown now and gives the unused time back to the daily limit.
+  $("end").addEventListener("click", () => {
+    const unused = Math.max(0, state.sessionEnd - Date.now());
+    chrome.storage.local.set({
+      sessionEnd: Date.now(),
+      used: { day: dayKey(), ms: Math.max(0, usedToday(state.used) - unused) },
+    });
   });
 
   // ---- block the current site ----
@@ -97,6 +108,7 @@ async function main() {
 
   // ---- settings: saved together, behind a challenge if they loosen the gate ----
   $("minutes").value = state.minutes;
+  $("cooldown").value = state.cooldown;
   $("cap").value = state.dailyCap;
   $("schedule-on").checked = schedule.on;
   $("from").value = schedule.from;
@@ -109,6 +121,7 @@ async function main() {
   $("save").addEventListener("click", () => {
     const next = {
       minutes: whole($("minutes"), 1, 60, DEFAULTS.minutes),
+      cooldown: whole($("cooldown"), 0, 240, 0),
       dailyCap: whole($("cap"), 0, 600, 0),
       schedule: {
         on: $("schedule-on").checked,

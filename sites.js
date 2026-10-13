@@ -6,11 +6,10 @@ const DEFAULT_SITES = ["x.com", "twitter.com", "youtube.com", "uol.com.br", "red
 // Everything the extension keeps in Chrome's local storage, with starting values.
 const DEFAULTS = {
   sites: DEFAULT_SITES,
-  minutes: 3,        // minutes earned per correct answer
-  bank: 0,           // minutes earned and not yet spent
-  sessionLeft: 0,    // ms of unlocked browsing left
-  tickAt: 0,         // when sessionLeft was last counted down
-  used: { day: "", ms: 0 },  // browsing time spent on that day, for the daily limit
+  minutes: 3,        // session minutes bought by each correct answer
+  cooldown: 30,      // minutes the sites stay locked after a session; 0 means none
+  sessionEnd: 0,     // time (ms) when the current or last session ends
+  used: { day: "", ms: 0 },  // session time started on that day, for the daily limit
   dailyCap: 0,       // most minutes of browsing per day; 0 means no limit
   schedule: { on: false, from: "09:00", to: "18:00", weekdays: false },  // off means always gated
   onlyTopics: [],    // topics ticked in the popup; empty means all topics
@@ -76,19 +75,21 @@ function loosensSchedule(prev, next) {
 }
 
 // True when the settings in `next` are looser than in `prev`: more minutes per
-// answer, a higher or removed daily limit, or fewer gated hours.
+// answer, a shorter cooldown, a higher or removed daily limit, or fewer gated hours.
 const loosensSettings = (prev, next) =>
   next.minutes > prev.minutes
+  || next.cooldown < prev.cooldown
   || (prev.dailyCap > 0 && (next.dailyCap === 0 || next.dailyCap > prev.dailyCap))
   || loosensSchedule(prev.schedule, next.schedule);
 
-// What a backup file holds. Banked and spent time are left out on purpose, so
-// restoring a backup can never hand back minutes.
+// What a backup file holds. The running session and the time used today are
+// left out on purpose, so restoring a backup can never hand back minutes.
 const makeBackup = (state) => ({
   app: "python-gate",
   saved: dayKey(),
   sites: state.sites,
   minutes: state.minutes,
+  cooldown: state.cooldown,
   dailyCap: state.dailyCap,
   schedule: state.schedule,
   onlyTopics: state.onlyTopics,
@@ -110,6 +111,7 @@ function restoreBackup(state, backup) {
   const schedule = isObject(backup.schedule) ? backup.schedule : {};
   const settings = {
     minutes: whole(backup.minutes, 1, 60, state.minutes),
+    cooldown: whole(backup.cooldown, 0, 240, state.cooldown),
     dailyCap: whole(backup.dailyCap, 0, 600, state.dailyCap),
     schedule: {
       on: schedule.on === true,
