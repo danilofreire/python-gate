@@ -13,6 +13,7 @@ function fakeEl(tag) {
     attachShadow() { return fakeEl("shadow"); },
     addEventListener(type, fn) { (e.handlers[type] = e.handlers[type] || []).push(fn); },
     fire(type, ev = {}) { for (const fn of e.handlers[type] || []) fn({ preventDefault() {}, stopPropagation() {}, ...ev }); },
+    replaceChildren(...kids) { e.children = kids; },
     focus() {}, select() {},
   };
   return e;
@@ -32,7 +33,8 @@ function makeEnv(store, extra = {}) {
       getElementById(id) { return (byId[id] = byId[id] || fakeEl(id)); },
       querySelectorAll() { return []; },
     },
-    setInterval(fn) { intervals.push(fn); },
+    setInterval(fn) { intervals.push(fn); return fn; },
+    clearInterval(fn) { intervals = intervals.filter((f) => f !== fn); },
     chrome: {
       storage: {
         local: {
@@ -51,6 +53,7 @@ function makeEnv(store, extra = {}) {
         create({ url }) { env.opened = url; },
       },
       runtime: {
+        id: "test",
         getURL: (file) => `chrome-extension://test/${file}`,
         sendMessage(message) { env.badges.push(message); return Promise.resolve(); },
       },
@@ -97,7 +100,7 @@ const settle = () => new Promise((r) => setImmediate(r));
   assert.equal(progress.textContent, "0 of 2 correct");
   form.fire("submit"); // empty input: ignored
 
-  // a miss gives one retry, then the answer; neither counts
+  // a miss gives one retry, then the answer; two misses do not count
   answer(false);
   assert(/Try once more/.test(fb().textContent), "retry offered: " + fb().textContent);
   answer(false);
@@ -112,15 +115,16 @@ const settle = () => new Promise((r) => setImmediate(r));
   const today = Object.keys(store.stats.days)[0];
   assert.deepEqual(store.stats.days[today], [1, 2]);
 
-  // a retry that succeeds does not count
+  // a retry that succeeds counts towards the session, but the score records the miss
   form.fire("submit");
-  answer(false); answer(true);
-  assert(/second try does not count/.test(fb().textContent));
-  assert.equal(progress.textContent, "1 of 2 correct");
+  answer(false);
+  assert(!store.sessionEnd && submit.textContent === "Check", "nothing yet after the miss");
+  answer(true);
+  assert(/^Correct on the second try\. /.test(fb().textContent), fb().textContent);
+  assert.equal(progress.textContent, "2 of 2 correct");
+  assert.deepEqual(store.stats.days[today], [1, 3], "first tries: 1 right out of 3");
 
   // the last answer offers the session, and nothing is unlocked before that
-  form.fire("submit");
-  answer(true);
   assert.equal(submit.textContent, "Start 6 min session");
   assert(!store.sessionEnd && !overlay.hidden, "not unlocked yet");
   form.fire("submit");
@@ -197,6 +201,16 @@ const settle = () => new Promise((r) => setImmediate(r));
   }
   assert(sawHarder, "saw a harder question");
   assert.equal(topicLine.textContent, "NumPy · harder, counts double");
+
+  // after the extension reloads, the old script stops and asks for a refresh
+  const sent = env.badges.length;
+  delete env.chrome.runtime.id;
+  env.chrome.runtime.sendMessage = () => { throw new Error("Extension context invalidated."); };
+  tick(5);
+  const card = find("div", "card")[0];
+  assert.equal(card.children[0].textContent, "Python Gate was updated");
+  assert.equal(card.children[1].textContent, "Refresh this page to continue.");
+  assert.equal(env.badges.length, sent, "no more calls to Chrome");
 
   // a site not on the list is left alone
   const env2 = makeEnv({});

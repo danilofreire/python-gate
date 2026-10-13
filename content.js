@@ -190,7 +190,18 @@ function start(saved) {
     chrome.runtime.sendMessage(message).catch(() => {}); // fails harmlessly while the extension reloads
   }
 
+  // When the extension is reloaded or updated, Chrome cuts this copy of the
+  // script off and every chrome.* call starts to throw. Stop quietly and ask
+  // for a refresh, which loads the new copy.
+  let timer;
+  function retire() {
+    clearInterval(timer);
+    pill.hidden = true;
+    card.replaceChildren(el("h1", "", "Python Gate was updated"), el("p", "note", "Refresh this page to continue."));
+  }
+
   function render() {
+    if (!chrome.runtime?.id) return retire();
     showBadge();
     // Outside the scheduled hours the site is simply open.
     if (!gatedNow(state.schedule)) return (overlay.hidden = pill.hidden = true);
@@ -237,11 +248,14 @@ function start(saved) {
     const correct = isCorrect(input.value, question.accept);
     const reveal = `Not quite, ${answerLabel(question)}: ${question.answer}\n${question.why}`;
 
+    // A right answer on the second try counts towards the session.
     if (phase === "retry") {
-      return correct ? finish("ok", `Right this time, but a second try does not count. ${question.why}`) : finish("bad", reveal);
+      if (!correct) return finish("bad", reveal);
+      done += question.level;
+      return finish("ok", `Correct on the second try. ${question.why}`);
     }
 
-    // Only the first try counts, for progress and towards the session.
+    // The scores and the come-back rate record the first try only.
     const stats = recordAnswer(state.stats, question, correct, dayKey());
     const unlocked = stats.harder.length > state.stats.harder.length
       ? `\nHarder ${question.topic} questions are now unlocked.` : "";
@@ -278,7 +292,7 @@ function start(saved) {
 
   document.addEventListener("visibilitychange", render); // refresh as soon as the tab comes back
   render();
-  setInterval(render, 1000);
+  timer = setInterval(render, 1000);
 }
 
 // The script loads on every page but only acts on sites in the block list.

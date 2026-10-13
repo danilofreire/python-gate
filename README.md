@@ -12,7 +12,7 @@ The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/sta
 
 - A blocked site opens behind a full-page screen that asks how long you need
 - Each length has a price in correct answers. By default 1 answer buys 3 minutes, up to 15 minutes for 5 answers
-- After a wrong answer you get one more try, which does not count. Then the quiz shows the answer with a one-line explanation
+- After a wrong answer you get one more try, and a right answer there still counts. After a second miss the quiz shows the answer with a one-line explanation
 - The session starts when you finish the questions and runs on the clock, with a countdown in the bottom-right corner
 - Leaving the site does not pause the session, and unused time is not saved
 - When the session ends, every blocked site locks for a 30-minute cooldown. No quiz is offered during it
