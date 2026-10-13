@@ -1,7 +1,7 @@
 // Runs the quiz (content.js) and the popup (popup.js) against a fake page and a
 // fake chrome.storage, and checks the behaviour end to end: choosing a session,
 // retry, countdown, cooldown, daily limit, schedule, harder questions, the
-// toolbar badge, the 5-in-a-row challenge and backups. Needs only Node. Run from anywhere: node tests/smoke_test.js
+// toolbar badge, the 3-in-a-row challenge and backups. Needs only Node. Run from anywhere: node tests/smoke_test.js
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
 const ext = path.resolve(__dirname, "..");
 const read = (f) => fs.readFileSync(`${ext}/${f}`, "utf8");
@@ -69,7 +69,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 (async () => {
   // ---------- content.js ----------
-  const store = { minutes: 3 };
+  const store = { minutes: 3, cooldown: 30 };
   const env = makeEnv(store);
   load(env, ["sites.js", "questions.js", "content.js"]);
   // remember the last question asked, so the test can answer it correctly
@@ -220,7 +220,7 @@ const settle = () => new Promise((r) => setImmediate(r));
   assert.equal(env2.created.length, 0, "no overlay on unlisted site");
 
   // ---------- popup.js ----------
-  const pstore = { minutes: 3, dailyCap: 30, stats: { weights: {}, recent: { Lists: "1101" }, harder: ["Lists"], days: {} } };
+  const pstore = { minutes: 3, cooldown: 30, dailyCap: 30, stats: { weights: {}, recent: { Lists: "1101" }, harder: ["Lists"], days: {} } };
   const penv = makeEnv(pstore, { url: "https://www.example.org/page" });
   load(penv, ["sites.js", "questions.js", "popup.js"]);
   await settle();
@@ -248,7 +248,7 @@ const settle = () => new Promise((r) => setImmediate(r));
   $("save").fire("click"); await settle();
   assert.equal(pstore.minutes, 2); assert.equal(pstore.dailyCap, 20); assert(penv.closed);
 
-  // loosening needs 5 in a row; a miss restarts the count
+  // loosening needs 3 in a row; each question allows a second try, and two misses restart the count
   const p2 = makeEnv(pstore, { url: "https://www.youtube.com/" });
   load(p2, ["sites.js", "questions.js", "popup.js"]);
   await settle();
@@ -260,17 +260,25 @@ const settle = () => new Promise((r) => setImmediate(r));
   assert($2("main").hidden && !$2("challenge").hidden, "challenge shown");
   assert.equal(pstore.minutes, 2, "not saved yet");
   const reply = (right) => { $2("challenge-input").value = right ? p2.__q.accept[0] : "wrong!"; $2("challenge-form").fire("submit"); };
+  const shown = () => $2("challenge-progress").textContent;
   $2("challenge-form").fire("submit"); // empty: ignored
-  // first question was asked before the wrapper existed; miss it to move on
-  reply(false); assert(/0 of 5/.test($2("challenge-progress").textContent));
+  // the first question was asked before the wrapper existed, so miss it twice to move on
+  reply(false);
+  assert.equal($2("challenge-feedback").textContent, "Not quite. Try once more.");
+  reply(false);
+  assert(/The count restarts/.test($2("challenge-feedback").textContent));
   $2("challenge-form").fire("submit"); // next question
-  reply(true); reply(true); reply(true); reply(false);
-  assert(/0 of 5/.test($2("challenge-progress").textContent));
+  reply(true); reply(true);
+  assert.equal(shown(), "2 of 3 in a row");
+  reply(false); reply(false);
+  assert.equal(shown(), "0 of 3 in a row", "two misses restart the count");
   $2("challenge-form").fire("submit");
-  for (let i = 0; i < 4; i++) reply(true);
-  assert.equal(pstore.minutes, 2, "4 in a row is not enough");
+  reply(true);
+  reply(false); reply(true);
+  assert.equal(shown(), "2 of 3 in a row", "a right second try keeps the run going");
+  assert.equal(pstore.minutes, 2, "2 in a row is not enough");
   reply(true); await settle();
-  assert.equal(pstore.minutes, 10, "saved after 5 in a row");
+  assert.equal(pstore.minutes, 10, "saved after 3 in a row");
 
   // removing a site also needs the challenge
   const p3 = makeEnv(pstore, { url: "https://www.youtube.com/" });

@@ -6,8 +6,8 @@ const DEFAULT_SITES = ["x.com", "twitter.com", "youtube.com", "uol.com.br", "red
 // Everything the extension keeps in Chrome's local storage, with starting values.
 const DEFAULTS = {
   sites: DEFAULT_SITES,
-  minutes: 3,        // session minutes bought by each correct answer
-  cooldown: 30,      // minutes the sites stay locked after a session; 0 means none
+  minutes: 5,        // session minutes bought by each correct answer
+  cooldown: 25,      // minutes the sites stay locked after a session; 0 means none
   sessionEnd: 0,     // time (ms) when the current or last session ends
   used: { day: "", ms: 0 },  // session time started on that day, for the daily limit
   dailyCap: 0,       // most minutes of browsing per day; 0 means no limit

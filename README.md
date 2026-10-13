@@ -11,11 +11,11 @@ The idea comes from a [post by @keysmashbandit](https://x.com/keysmashbandit/sta
 ## How it works
 
 - A blocked site opens behind a full-page screen that asks how long you need
-- Each length has a price in correct answers. By default 1 answer buys 3 minutes, up to 15 minutes for 5 answers
+- Each length has a price in correct answers. By default 1 answer buys 5 minutes, up to 25 minutes for 5 answers
 - After a wrong answer you get one more try, and a right answer there still counts. After a second miss the quiz shows the answer with a one-line explanation
 - The session starts when you finish the questions and runs on the clock, with a countdown in the bottom-right corner
 - Leaving the site does not pause the session, and unused time is not saved
-- When the session ends, every blocked site locks for a 30-minute cooldown. No quiz is offered during it
+- When the session ends, every blocked site locks for a 25-minute cooldown. No quiz is offered during it
 - All blocked sites share the same session and cooldown
 - On a blocked site, the toolbar icon shows the minutes left: blue for the session, grey for the cooldown
 
@@ -47,15 +47,15 @@ Click the Python Gate icon to open the popup. Change the settings there, then pr
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| Minutes per correct answer | 3 | Session time bought by each correct answer, from 1 to 60 |
-| Cooldown after a session | 30 | Minutes the sites stay locked after a session. 0 means no cooldown |
+| Minutes per correct answer | 5 | Session time bought by each correct answer, from 1 to 60 |
+| Cooldown after a session | 25 | Minutes the sites stay locked after a session. 0 means no cooldown |
 | Daily browsing limit | none | Most session minutes you can start per day |
 | Gate only during set hours | off | Hours when the gate is on. When off, the gate is always on |
 | Monday to Friday only | off | Leaves weekends open. It applies when set hours are on |
 
 The set hours can run past midnight, such as 22:00 to 06:00. Outside them, blocked sites open normally.
 
-Changes that tighten the gate save at once. Changes that loosen it take 5 correct answers in a row:
+Changes that tighten the gate save at once. Changes that loosen it take 3 correct answers in a row, with a second try allowed on each question:
 
 - more minutes per answer
 - a shorter cooldown
@@ -132,7 +132,7 @@ Chrome switches extensions off in Incognito windows unless you allow them, so th
 | Script | What it checks | Needs |
 |--------|----------------|-------|
 | `tests/check_answers.py` | Runs 300 versions of every question in real Python and compares the output with the extension's answer. Also checks topic selection, progress rules and the schedule | Node, pandas, NumPy, Matplotlib |
-| `tests/smoke_test.js` | Runs the quiz and the popup against a simulated page: choosing a session, retry, countdown, cooldown, daily limit, schedule, the toolbar badge, the 5-in-a-row rule and backups | Node |
+| `tests/smoke_test.js` | Runs the quiz and the popup against a simulated page: choosing a session, retry, countdown, cooldown, daily limit, schedule, the toolbar badge, the 3-in-a-row rule and backups | Node |
 
 ```bash
 python3 tests/check_answers.py

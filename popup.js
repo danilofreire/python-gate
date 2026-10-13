@@ -2,24 +2,26 @@
 // progress and manage the block list.
 
 const $ = (id) => document.getElementById(id);
-const STREAK_NEEDED = 5; // correct answers in a row needed to loosen the gate
+const STREAK_NEEDED = 3; // correct answers in a row needed to loosen the gate
 
 let state;
 
 // Shows a short quiz in place of the popup. `apply` runs only after
-// STREAK_NEEDED correct answers in a row; a wrong answer restarts the count.
+// STREAK_NEEDED correct answers in a row. As in the main quiz, each question
+// allows a second try; two misses on one question restart the count.
 function challenge(what, apply) {
-  let run = 0, question, showingAnswer = false;
+  let run = 0, question, phase; // phase: "ask" (first try), "retry" (second try) or "shown" (answer revealed)
   $("main").hidden = true;
   $("challenge").hidden = false;
   $("challenge-what").textContent = `To ${what}.`;
 
   const ask = () => {
     question = makeQuestion(state.onlyTopics, state.stats.weights, state.stats.harder);
-    showingAnswer = false;
+    phase = "ask";
     $("challenge-prompt").textContent = promptFor(question);
     $("challenge-code").textContent = question.code;
     $("challenge-input").value = "";
+    $("challenge-feedback").textContent = "";
     $("challenge-submit").textContent = "Check";
     $("challenge-progress").textContent = `${run} of ${STREAK_NEEDED} in a row`;
     $("challenge-input").focus();
@@ -27,19 +29,20 @@ function challenge(what, apply) {
 
   $("challenge-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    if (showingAnswer) {
-      $("challenge-feedback").textContent = "";
-      return ask();
-    }
+    if (phase === "shown") return ask();
     if (!$("challenge-input").value.trim()) return;
 
     if (isCorrect($("challenge-input").value, question.accept)) {
       run++;
-      $("challenge-feedback").textContent = "";
       return run === STREAK_NEEDED ? apply() : ask();
     }
+    if (phase === "ask") {
+      phase = "retry";
+      $("challenge-feedback").textContent = "Not quite. Try once more.";
+      return $("challenge-input").select();
+    }
     run = 0;
-    showingAnswer = true;
+    phase = "shown";
     $("challenge-feedback").textContent = `Not quite, ${answerLabel(question)}: ${question.answer}\nThe count restarts.`;
     $("challenge-submit").textContent = "Next question";
     $("challenge-progress").textContent = `0 of ${STREAK_NEEDED} in a row`;
