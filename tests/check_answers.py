@@ -30,7 +30,9 @@ for (let k = 0; k < 3000; k++) {{
   assert.equal(q.topic, "NumPy");
   hits += q.id === heavy;
 }}
-assert(hits > 1000 && hits <= 1500, `weighted type came up ${{hits}} times in 3000`);
+// With no immediate repeats, a type weighted 8 among 9 comes up 8/23 of the time (about 1043 in 3000);
+// an unweighted type would come up about 333 times.
+assert(hits > 850 && hits < 1250, `weighted type came up ${{hits}} times in 3000`);
 assert.equal(nextWeight(undefined, false), 2);
 assert.equal(nextWeight(8, false), 8);
 assert.equal(nextWeight(0.25, true), 0.25);
